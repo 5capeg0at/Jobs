@@ -1,0 +1,11 @@
+{
+  "_comment": "Copy this file to jobs.config.local.json (gitignored) and edit for your machine. It deep-merges over jobs.config.json: objects merge key-by-key, scalars and arrays are replaced wholesale, your values win. Add personal repos here; override any committed default (a repo path, port, ...) that is wrong on your box.",
+
+  "repos": {
+    "_example_personal_repo": { "path": "C:\\path\\to\\your\\repo", "trunk": "main" }
+  },
+
+  "_example_override_common_repo_path": {
+    "repos": { "example-repo": { "path": "D:\\src\\example-repo" } }
+  }
+}

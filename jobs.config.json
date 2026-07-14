@@ -1,0 +1,21 @@
+{
+  "_comment": "Data-driven config for the jobs app sidecar + frontend. port is jobs-sidecar.ps1's default listen port. Copy jobs.config.local.example.json to jobs.config.local.json to override any of this per-machine (paths, port, ADO org). Adding a repo or a link is a data edit, not a code change.",
+  "port": 7799,
+
+  "_adoComment": "Azure DevOps wiring for the Assigned (ADO) mode. The sidecar shells out to `az` (inheriting the signed-in user's cached creds) and shapes your current-sprint work. currentSprintTeam is the only fixed string az needs; the iteration path is resolved live so it keeps working next sprint. org/project/url templates keep link-building data-driven. Set these to your own org, or leave ADO mode unused — the board works without it.",
+  "ado": {
+    "org": "https://dev.azure.com/your-org",
+    "project": "YourProject",
+    "currentSprintTeam": "Your Team",
+    "workItemUrl": "https://dev.azure.com/your-org/YourProject/_workitems/edit/",
+    "boardUrl": "https://dev.azure.com/your-org/YourProject/_sprints"
+  },
+
+  "_prCheckComment": "Cadence for the background PR-status sweep (check-pr-status.ps1), fired from the sidecar's main request loop. intervalSec is the chosen cadence, not a placeholder.",
+  "prCheck": { "intervalSec": 3600 },
+
+  "_reposComment": "Repos a job can be pinned to. Jobs store the repo KEY; the sidecar resolves path + trunk here for the git-graph endpoints (also read by audit-done-jobs.ps1). trunk = the branch to diff a feature branch against (merge-base..branch). Edit these to point at your own repos.",
+  "repos": {
+    "example-repo": { "path": "C:\\path\\to\\your\\repo", "trunk": "main" }
+  }
+}

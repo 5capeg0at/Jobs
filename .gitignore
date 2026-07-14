@@ -1,0 +1,10 @@
+# Personal data + per-machine config — never committed, kept locally.
+jobs.json
+jobs.json.tmp
+jobs.config.local.json
+
+# Personal work history / handover notes — kept locally, not published.
+docs/
+
+# Agent worktrees + local tooling state.
+.claude/

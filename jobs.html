@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jobs</title>
+<!-- Favicon: the same kanban board mark as the header logo. The .ico is what "install as app" and
+     Windows shortcuts pick up (an SVG data-URI alone can't do that); the SVG below is a crisp
+     fallback for browsers that prefer it. Source is jobs-mark.svg — regenerate the raster with the
+     gen-icons recipe if the mark ever changes, and keep the header <svg> in sync too. -->
+<link rel="icon" type="image/x-icon" href="/jobs-mark.ico">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><rect x='1.5' y='1.5' width='45' height='45' rx='11' fill='%23211d16'/><rect x='8' y='9' width='9.6' height='30' rx='2.4' fill='%23fff' opacity='.065'/><rect x='19.2' y='9' width='9.6' height='30' rx='2.4' fill='%23fff' opacity='.065'/><rect x='30.4' y='9' width='9.6' height='30' rx='2.4' fill='%23fff' opacity='.065'/><rect x='10' y='12' width='5.6' height='5' rx='1.5' fill='%237cc3cf'/><rect x='10' y='19' width='5.6' height='5' rx='1.5' fill='%237cc3cf' opacity='.58'/><rect x='10' y='26' width='5.6' height='5' rx='1.5' fill='%237cc3cf' opacity='.58'/><rect x='21.2' y='12' width='5.6' height='5' rx='1.5' fill='%23d8a25f'/><rect x='21.2' y='19' width='5.6' height='5' rx='1.5' fill='%23d8a25f' opacity='.58'/><rect x='32.4' y='12' width='5.6' height='5' rx='1.5' fill='%2374c79c'/></svg>">
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+
+:root {
+  --bg: oklch(0.172 0.007 72);
+  --surface: oklch(0.214 0.008 72);
+  --raised: oklch(0.258 0.009 72);
+  --border: oklch(0.31 0.008 72);
+  --border-soft: oklch(0.272 0.007 72);
+  --text: oklch(0.945 0.006 72);
+  --muted: oklch(0.68 0.012 72);
+  --faint: oklch(0.55 0.01 72);
+  --accent: oklch(0.75 0.072 196);
+  --accent-bg: oklch(0.30 0.04 196);
+  --ok: oklch(0.77 0.09 156);
+  --warn: oklch(0.81 0.08 78);
+  --fail: oklch(0.70 0.115 30);
+  --pr: oklch(0.72 0.11 300);
+  --ready: oklch(0.77 0.09 200);
+  --review: oklch(0.74 0.14 65);
+  --done: oklch(0.82 0.13 85);
+  --mono: 'Cascadia Code','SF Mono', ui-monospace, 'Consolas', monospace;
+
+  --logo-fg: oklch(0.86 0.07 196);
+  --scrim: color-mix(in oklch,var(--bg) 55%,transparent);
+  --shadow: none;
+  --shadow-pop: 0 18px 44px rgba(0,0,0,.4);
+  --shadow-modal: 0 24px 60px rgba(0,0,0,.45);
+}
+
+body.light {
+  --bg:          oklch(0.959 0.010 87.5);
+  --surface:     oklch(1.000 0.000 90);
+  --raised:      oklch(0.946 0.012 91.5);
+  --border:      oklch(0.862 0.010 252.8);
+  --border-soft: oklch(0.906 0.010 93.6);
+  --text:        oklch(0.262 0.055 266.5);
+  --muted:       oklch(0.470 0.028 264.3);
+  --faint:       oklch(0.652 0.015 262.4);
+  --accent:      oklch(0.599 0.103 214.7);
+  --accent-bg:   oklch(0.933 0.026 211.6);
+  --ok:          oklch(0.583 0.099 169.8);
+  --warn:        oklch(0.676 0.133 76.2);
+  --fail:        oklch(0.588 0.171 32.5);
+  --pr:          oklch(0.52 0.16 300);
+  --ready:       oklch(0.583 0.099 200);
+  --review:      oklch(0.62 0.15 65);
+  --done:        oklch(0.60 0.14 70);
+  --logo-fg:     var(--accent);
+  --scrim:       color-mix(in oklch,#18233F 38%,transparent);
+  --shadow:      0 1px 2px rgba(24,35,63,.06), 0 3px 10px rgba(24,35,63,.05);
+  --shadow-pop:  0 12px 32px rgba(24,35,63,.14);
+  --shadow-modal:0 24px 60px rgba(24,35,63,.18);
+}
+
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--raised); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--border); }
+
+/* stop iOS Safari inflating font sizes in boxes it deems overflow-y — it makes
+   doc-row text render at inconsistent sizes depending on path length */
+html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family: ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  font-size:13px; height:100vh; display:flex; flex-direction:column; letter-spacing:0.005em; overflow:hidden;
+}
+.mono { font-family:var(--mono); }
+a { color:inherit; }
+
+/* ---- status strip (simplified — no docker/aspire/sql/silos gauges, this app has no Actions panel) --- */
+#strip { display:flex; align-items:stretch; height:62px; background:var(--surface);
+  border-bottom:1px solid var(--border-soft); flex-shrink:0; position:relative; z-index:10; }
+.brand { display:flex; align-items:center; gap:11px; padding:0 20px; border-right:1px solid var(--border-soft); }
+/* the mark carries its own rounded tile — the chip is just a sizing box that clips to match */
+.logo { width:38px; height:38px; border-radius:11px; overflow:hidden; display:grid; place-items:center; }
+.logo svg { width:100%; height:100%; display:block; }
+.brand .bt b { font-size:16.5px; font-weight:750; letter-spacing:-0.01em; display:block; line-height:1.1; }
+.brand .bt span { font-family:var(--mono); font-size:9.5px; color:var(--faint); letter-spacing:0.03em; }
+
+.strip-right { margin-left:auto; display:flex; align-items:center; gap:13px; padding:0 18px; }
+#strip-age { font-family:var(--mono); font-size:10.5px; color:var(--faint); white-space:nowrap; }
+.theme-toggle { background:var(--raised); border:1px solid var(--border); color:var(--muted);
+  border-radius:9px; width:33px; height:33px; display:grid; place-items:center; cursor:pointer; padding:0; }
+.theme-toggle:hover { color:var(--accent); border-color:var(--accent); }
+.theme-toggle svg { width:16px; height:16px; display:block; }
+.theme-toggle .moon { display:none; }
+body.light .theme-toggle .sun { display:none; }
+body.light .theme-toggle .moon { display:block; }
+
+.card { background:var(--surface); border:1px solid var(--border-soft); border-radius:15px;
+  display:flex; flex-direction:column; overflow:hidden; box-shadow:var(--shadow); }
+.ch { display:flex; align-items:center; gap:10px; padding:13px 17px 11px; }
+.ch .ico { width:25px; height:25px; border-radius:8px; background:var(--raised); display:grid; place-items:center;
+  color:var(--accent); font-size:12px; }
+.ch h3 { font-size:13px; font-weight:600; }
+.ch .meta { margin-left:auto; font-size:11.5px; color:var(--faint); }
+
+/* ---- body: on a WIDE viewport the kanban board sits main-stage, rail is a sidebar.
+   On a NARROW/tall viewport only the rail shows, full width/height — the kanban is
+   reached via Expand as a full-screen takeover. On a SLAB viewport (phone landscape)
+   the board alone shows. See applyResponsiveMode(). --- */
+#body { flex:1; display:flex; gap:15px; padding:15px; min-height:0; }
+#board-pane { flex:1.6; display:flex; flex-direction:column; min-width:0; }
+#rail { width:340px; flex-shrink:0; order:-1; }  /* rail sits left of the board pane */
+
+body.narrow #body { padding:10px; }
+body.narrow #board-pane { display:none; }               /* wide-only: embedded board pane hidden on narrow */
+
+/* wide viewport: the rail is always the Assigned card — the board pane header owns
+   search/Brief/+ New job, so the rail's mode slider and Brief button only exist on
+   narrow/slab where the rail is the whole app */
+body:not(.narrow):not(.slab) #rail .modebar,
+body:not(.narrow):not(.slab) #jobs-brief { display:none; }
+body.narrow #rail { width:auto; flex:1; }
+
+/* jobs rail */
+.jobs-card { height:100%; }
+.badge { background:var(--accent-bg); color:var(--accent); border-radius:20px; padding:2px 9px; font-size:11px; font-weight:600; }
+.expand { margin-left:auto; background:none; border:1px solid var(--border-soft); color:var(--muted);
+  border-radius:9px; padding:6px 12px; font-size:11.5px; cursor:pointer; white-space:nowrap;
+  display:inline-flex; align-items:center; gap:5px; }
+.expand:hover { color:var(--accent); border-color:var(--accent); }
+.expand svg { flex-shrink:0; }
+/* wide-viewport Assigned rail: the expand slot is a plain text link to the sprint board */
+.expand.aslink { border:none; color:var(--accent); font-size:11px; padding:6px 7px; border-radius:7px; }
+.expand.aslink:hover { background:var(--accent-bg); }
+
+/* header pill buttons (Brief, + New job) — same visual weight as Expand */
+.hbtn { background:none; border:1px solid var(--border-soft); color:var(--muted);
+  border-radius:9px; padding:6px 10px; font-size:11.5px; cursor:pointer; white-space:nowrap;
+  display:inline-flex; align-items:center; gap:5px; }
+.hbtn:hover { color:var(--accent); border-color:var(--accent); }
+.hbtn svg { flex-shrink:0; }
+#jobs-brief { margin:0 auto; }
+
+/* rail search: icon + pop-out that overlays the whole header row */
+.jobs-card .ch { position:relative; }
+.jsearch-btn { background:none; border:1px solid var(--border-soft); color:var(--muted);
+  width:25px; height:25px; border-radius:8px; cursor:pointer; display:grid; place-items:center;
+  flex-shrink:0; transition:.12s; }
+.jsearch-btn:hover { color:var(--accent); border-color:var(--accent); }
+.jsearch-btn.active { color:var(--accent); background:var(--accent-bg);
+  border-color:color-mix(in oklch,var(--accent) 40%,transparent); }
+.jsearch-pop { position:absolute; left:0; top:0; bottom:0; display:flex; align-items:center; gap:9px;
+  padding:0 17px; background:var(--surface); border-radius:15px 15px 0 0; }
+.jsearch-pop.hidden { display:none; }
+.jsearch-pop .fico { color:var(--faint); flex-shrink:0; }
+.jsearch-pop input { flex:1; min-width:0; background:none; border:none; color:var(--text);
+  font-size:13px; font-family:inherit; outline:none; }
+.jsearch-clear { background:var(--raised); border:1px solid var(--border-soft); color:var(--muted);
+  width:22px; height:22px; border-radius:7px; cursor:pointer; flex-shrink:0; font-size:14px; line-height:1; }
+.jsearch-clear:hover { color:var(--accent); border-color:var(--accent); }
+
+/* flexible so it soaks up free space and shrinks on phones instead of pushing
+   the close/add buttons off-screen */
+.bsearch { display:flex; align-items:center; gap:6px; flex:1; min-width:60px; max-width:280px; margin-left:auto; }
+.bsearch input { flex:1; width:auto; min-width:0; background:var(--raised); border:1px solid var(--border-soft);
+  border-radius:9px; padding:6px 10px; font-size:12px; font-family:inherit; color:var(--text); outline:none; }
+.bsearch input:focus { border-color:var(--accent); }
+.bsearch .bsearch-clear { background:var(--raised); border:1px solid var(--border-soft); color:var(--muted);
+  width:22px; height:22px; border-radius:7px; cursor:pointer; flex-shrink:0; font-size:14px; line-height:1; }
+.bsearch .bsearch-clear:hover { color:var(--accent); border-color:var(--accent); }
+.bsearch .bsearch-clear.hidden { display:none; }
+#jobs-list { padding:0 15px 15px; display:flex; flex-direction:column; gap:9px; flex:1; min-height:0; overflow-y:auto; }
+.job { background:var(--raised); border:1px solid var(--border-soft); border-radius:12px; padding:11px 12px;
+  cursor:pointer; transition:.12s; }
+.job:hover { border-color:var(--accent); }
+.job .jhead { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.job .jnum { font-family:var(--mono); font-size:10px; font-weight:700; color:var(--faint); }
+.job .st { font-size:10px; font-weight:600; padding:2px 9px; border-radius:20px; display:inline-block; }
+.s-inprogress .st { background:var(--accent-bg); color:var(--accent); }
+.s-ready .st { background:color-mix(in oklch,var(--ready) 18%,var(--surface)); color:var(--ready); }
+.s-review .st { background:color-mix(in oklch,var(--review) 18%,var(--surface)); color:var(--review); }
+.s-blocked .st { background:color-mix(in oklch,var(--fail) 18%,var(--surface)); color:var(--fail); }
+.s-parked .st { background:color-mix(in oklch,var(--warn) 18%,var(--surface)); color:var(--warn); }
+.s-pr .st { background:color-mix(in oklch,var(--pr) 18%,var(--surface)); color:var(--pr); }
+.s-done .st { background:color-mix(in oklch,var(--ok) 18%,var(--surface)); color:var(--ok); }
+.s-planned .st, .s-removed .st { background:var(--raised); color:var(--muted); border:1px solid var(--border-soft); }
+.job .jl { font-size:12.5px; font-weight:550; line-height:1.3; }
+.job .jb { font-family:var(--mono); font-size:10px; color:var(--faint); margin-top:5px; word-break:break-all; }
+/* quick-add: title-only entry pinned at the TOP of the rail (detail opens on create,
+   so repo/branch/notes live there). Ghost bar morphs into an inline input. */
+.qadd { margin:0 15px 11px; flex-shrink:0; display:flex; align-items:center; gap:8px; min-height:41px;
+  border:1.5px dashed color-mix(in oklch,var(--accent) 45%,transparent); border-radius:11px; padding:9px 12px;
+  background:color-mix(in oklch,var(--accent-bg) 45%,transparent); color:var(--accent);
+  font-size:12.5px; font-weight:600; cursor:pointer; transition:.12s; }
+.qadd:hover { border-color:var(--accent); background:var(--accent-bg); }
+.qadd.open { border:1px solid var(--accent); background:var(--surface); font-weight:400; cursor:default; }
+.qadd input { flex:1; min-width:0; background:none; border:none; outline:none; color:var(--text);
+  font-family:inherit; font-size:13px; }
+.qadd input::placeholder { color:var(--faint); }
+.qadd .qgo { background:var(--accent-bg); border:1px solid color-mix(in oklch,var(--accent) 40%,transparent);
+  color:var(--accent); border-radius:8px; padding:4px 12px; font-size:11.5px; cursor:pointer; flex-shrink:0; }
+.qadd .qgo:hover { filter:brightness(1.1); }
+.empty { color:var(--faint); font-size:12px; padding:14px 4px; }
+
+/* ---- jobs: Assigned (ADO) mode ------------------------------------------- */
+.hidden { display:none !important; }
+.modebar { padding:0 15px 11px; flex-shrink:0; }
+.seg { position:relative; display:grid; grid-template-columns:1fr 1fr;
+  background:var(--bg); border:1px solid var(--border-soft); border-radius:11px; padding:3px; }
+.seg .glider { position:absolute; top:3px; bottom:3px; left:3px; width:calc(50% - 3px);
+  background:var(--raised); border:1px solid var(--border); border-radius:8px;
+  transition:transform .22s cubic-bezier(.4,.05,.2,1); }
+.seg[data-mode="ado"] .glider { transform:translateX(100%); }
+.seg button { position:relative; z-index:1; background:none; border:none; cursor:pointer;
+  font-family:inherit; font-size:11.5px; font-weight:600; color:var(--faint); padding:7px 8px;
+  display:flex; align-items:center; justify-content:center; gap:6px; transition:color .18s; }
+.seg button.on { color:var(--text); }
+.seg button .sgl { font-size:11px; opacity:.85; }
+.seg[data-mode="personal"] button[data-m="personal"] .sgl,
+.seg[data-mode="ado"] button[data-m="ado"] .sgl { color:var(--accent); }
+
+.idrow { display:none; align-items:center; gap:9px; margin:0 15px 10px; padding:8px 10px;
+  background:var(--bg); border:1px solid var(--border-soft); border-radius:10px; flex-shrink:0; }
+.idrow .avatar { width:22px; height:22px; border-radius:50%; display:grid; place-items:center;
+  font-size:9.5px; font-weight:700; letter-spacing:-0.02em; flex-shrink:0;
+  background:color-mix(in oklch,var(--accent) 26%,var(--surface)); color:var(--accent);
+  border:1px solid color-mix(in oklch,var(--accent) 30%,transparent); }
+.idrow .idsum { font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.idrow .idsum b { color:var(--text); font-weight:600; }
+.idrow .idsum .done { color:var(--done); font-weight:700; }
+.idrow .idrefresh { margin-left:auto; background:none; border:1px solid var(--border-soft); color:var(--muted);
+  width:24px; height:24px; border-radius:7px; cursor:pointer; font-size:13px; line-height:1; flex-shrink:0; transition:.12s; }
+.idrow .idrefresh:hover { color:var(--accent); border-color:var(--accent); }
+.idrow .idrefresh.spin { animation:oh-pulse 1s infinite; }
+@keyframes oh-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.story { background:var(--bg); border:1px solid var(--border-soft); border-radius:13px; padding:10px;
+  position:relative; }
+.story::before { content:""; position:absolute; left:0; top:11px; bottom:11px; width:2px; border-radius:2px;
+  background:var(--accent); opacity:.55; }
+.story.st-ready::before { background:var(--pr); }
+.story-head { padding-left:8px; cursor:default; }
+.story-top { display:flex; align-items:center; gap:7px; }
+.story-type { font-family:var(--mono); font-size:8.5px; letter-spacing:0.08em; text-transform:uppercase;
+  color:var(--faint); border:1px solid var(--border-soft); border-radius:5px; padding:1px 5px; }
+.id { font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+.id .hash { color:var(--faint); }
+.story-title { font-size:12.5px; font-weight:600; line-height:1.32; margin-top:6px; }
+
+.state { font-size:9.5px; font-weight:650; padding:2px 8px; border-radius:20px; white-space:nowrap;
+  display:inline-flex; align-items:center; gap:5px; }
+.state::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+.state.ml { margin-left:auto; }
+.a-inprogress { background:var(--accent-bg); color:var(--accent); }
+.a-ready { background:color-mix(in oklch,var(--pr) 18%,var(--surface)); color:var(--pr); }
+.a-todo { background:var(--raised); color:var(--muted); border:1px solid var(--border-soft); }
+
+.ado-pane { display:none; padding:9px 2px 3px 8px; margin-top:8px; border-top:1px solid var(--border-soft);
+  flex-direction:column; gap:9px; }
+.story.open > .ado-pane, .task.open > .ado-pane { display:flex; }
+.ado-tags { display:flex; flex-wrap:wrap; gap:5px; }
+.ado-tag { font-size:9.5px; color:var(--muted); background:var(--raised); border:1px solid var(--border-soft);
+  border-radius:6px; padding:2px 7px; }
+.ado-sub { font-size:9.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--faint); margin-bottom:4px; }
+.ado-text { font-size:11.5px; color:var(--muted); line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+.ado-open { align-self:flex-start; font-size:11px; color:var(--accent); text-decoration:none;
+  border:1px solid color-mix(in oklch,var(--accent) 35%,transparent); border-radius:8px; padding:4px 10px; }
+.ado-open:hover { background:var(--accent-bg); }
+
+.story-meta { margin-top:6px; padding:8px 0 0 8px; border-top:1px solid var(--border-soft);
+  display:flex; flex-direction:column; gap:7px; }
+.ado-meta-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ado-meta-row .ado-tags { flex:1; }
+.ado-meta-row .ado-open { margin-left:auto; flex-shrink:0; }
+.ado-toggles { display:flex; gap:10px; }
+.ado-toggle { background:none; border:none; padding:0; font-family:inherit; font-size:11px;
+  color:var(--muted); cursor:pointer; display:flex; align-items:center; gap:3px; }
+.ado-toggle:hover,.ado-toggle.active { color:var(--accent); }
+.ado-arr { font-size:10px; transition:transform .15s; }
+.ado-toggle.active .ado-arr { transform:rotate(180deg); }
+.ado-section { display:none; background:var(--raised); border-radius:6px; padding:8px 10px; }
+.ado-section.open { display:block; }
+
+.tasks { margin:9px 0 0 8px; display:flex; flex-direction:column; gap:6px; }
+.tasks-h { font-family:var(--mono); font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase;
+  color:var(--faint); display:flex; align-items:center; gap:6px; }
+.tasks-h .ln { flex:1; height:1px; background:var(--border-soft); }
+.task { background:var(--raised); border:1px solid var(--border-soft); border-radius:10px; padding:9px 10px;
+  transition:.12s; }
+.task:hover { border-color:var(--accent); }
+.task-head { cursor:pointer; }
+.task-top { display:flex; align-items:center; gap:7px; }
+.task-title { font-size:12px; font-weight:500; line-height:1.3; margin-top:6px; }
+
+.synced { margin:6px 15px 15px; display:flex; align-items:center; justify-content:center; gap:7px;
+  font-family:var(--mono); font-size:10px; color:var(--faint); padding:9px; cursor:pointer;
+  border:1px dashed var(--border-soft); border-radius:11px; flex-shrink:0; }
+.synced:hover { color:var(--muted); border-color:var(--border); }
+.synced .pulse { width:6px; height:6px; border-radius:50%; background:var(--ok);
+  box-shadow:0 0 0 3px color-mix(in oklch,var(--ok) 16%,transparent); }
+.synced.err .pulse { background:var(--fail); box-shadow:0 0 0 3px color-mix(in oklch,var(--fail) 16%,transparent); }
+
+/* ---- modals -------------------------------------------------------------- */
+.modal-bg { position:fixed; inset:0; background:var(--scrim);
+  backdrop-filter:blur(3px); display:grid; place-items:center; z-index:80; }
+.modal { background:var(--surface); border:1px solid var(--border); border-radius:18px; display:flex;
+  flex-direction:column; overflow:hidden; box-shadow:var(--shadow-modal); }
+/* the board is a full-screen takeover, not a floating dialog — reuses the modal
+   plumbing (modal-root, closeModal) but stretches edge to edge at every size */
+.modal-bg.takeover { place-items:stretch; }
+.modal.board { width:100%; height:100dvh; max-height:none; border-radius:0; border:none; }
+.mplus { width:30px; height:30px; border-radius:9px; background:var(--raised); display:grid; place-items:center;
+  border:1px solid var(--border-soft); color:var(--muted); cursor:pointer; flex-shrink:0; padding:0; font-size:17px; line-height:1; }
+.mplus:hover { color:var(--text); border-color:var(--accent); }
+.modal.detail { width:min(820px,92vw); max-height:88vh; }
+.mhead { display:flex; align-items:center; gap:12px; padding:17px 22px; border-bottom:1px solid var(--border-soft); }
+.mhead .mico { width:28px; height:28px; border-radius:9px; background:var(--raised); display:grid; place-items:center;
+  color:var(--accent); flex-shrink:0; }
+.mhead .mnum { font-family:var(--mono); font-size:13px; font-weight:700; color:var(--faint); flex-shrink:0; }
+.mhead h2 { font-size:16px; font-weight:650; }
+.mclose { margin-left:auto; width:30px; height:30px; border-radius:9px; background:var(--raised);
+  border:1px solid var(--border-soft); color:var(--muted); cursor:pointer; font-size:15px; flex-shrink:0; }
+.mclose:hover { color:var(--text); border-color:var(--accent); }
+.mboard { width:30px; height:30px; border-radius:9px; background:var(--raised); display:grid; place-items:center;
+  border:1px solid var(--border-soft); color:var(--muted); cursor:pointer; flex-shrink:0; padding:0; }
+.mboard:hover { color:var(--text); border-color:var(--accent); }
+
+/* kanban */
+.board-cols { flex:1; display:grid; grid-auto-flow:column; grid-auto-columns:minmax(220px,1fr); gap:14px;
+  padding:18px 22px; min-height:0; overflow-x:auto; }
+.bcol { background:var(--bg); border:1px solid var(--border-soft); border-radius:13px; display:flex;
+  flex-direction:column; overflow:hidden; transition:.12s; }
+.bcol.dragover { border-color:var(--accent); background:var(--accent-bg); }
+.bcolh { display:flex; align-items:center; gap:8px; padding:12px 14px; font-size:12px; font-weight:600; }
+.bcolh .dot { width:8px; height:8px; border-radius:50%; }
+.bcolh .ct { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint); }
+.bcards { padding:0 11px 11px; display:flex; flex-direction:column; gap:9px; overflow-y:auto; }
+.bcard { background:var(--surface); border:1px solid var(--border-soft); border-radius:11px; padding:11px 12px;
+  cursor:grab; transition:.12s; }
+.bcard:hover { border-color:var(--accent); }
+.bcard.dragging { opacity:.4; cursor:grabbing; }
+.bcard .bjnum { font-family:var(--mono); font-size:10px; font-weight:700; color:var(--faint); margin-bottom:5px; }
+.bcard .l { font-size:12.5px; font-weight:550; line-height:1.3; }
+.bcard .b { font-family:var(--mono); font-size:10px; color:var(--faint); margin-top:6px; word-break:break-all; }
+.prchip { display:inline-block; margin-top:6px; font-family:var(--mono); font-size:10px; font-weight:600;
+  padding:2px 8px; border-radius:20px; background:color-mix(in oklch,var(--pr) 18%,var(--surface)); color:var(--pr);
+  text-decoration:none; }
+.prchip:hover { filter:brightness(1.15); }
+/* embedded board pane (wide-viewport, non-modal) — same column markup as the modal board */
+#board-pane .card { flex:1; min-height:0; }
+#board-pane .board-cols { padding:14px; }
+
+/* job detail */
+.detail-body { padding:20px 22px; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:18px; }
+.drow { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.dlabel { font-size:10.5px; color:var(--faint); text-transform:uppercase; letter-spacing:0.06em; }
+/* label+field groups: inline on desktop, label-above on narrow (16px touch
+   controls are too wide for one inline row) */
+.dfield { display:flex; align-items:center; gap:10px; min-width:0; }
+.dfield.fwide { flex:1; }
+.fwrap { display:flex; align-items:center; gap:10px; flex:1; min-width:0; position:relative; }
+.fwrap input { flex:1; min-width:0; }
+.fwrap input.padlink { padding-right:34px; }
+.fwrap .prlink { position:absolute; right:11px; top:50%; transform:translateY(-50%); }
+.mono-fld { font-family:var(--mono); font-size:12px; }
+.dfield.fwide > input { flex:1; min-width:0; }
+/* PR reveal button beside Branch — mobile only; tinted when a PR exists */
+.prtoggle { display:none; }
+body.narrow .modal.detail .prtoggle { display:grid; place-items:center; align-self:stretch; width:42px;
+  flex-shrink:0; background:var(--bg); border:1px solid var(--border); border-radius:9px;
+  color:var(--muted); font-size:16px; cursor:pointer; padding:0; }
+body.narrow .modal.detail .prtoggle.has { color:var(--pr);
+  border-color:color-mix(in oklch,var(--pr) 45%,transparent);
+  background:color-mix(in oklch,var(--pr) 14%,var(--bg)); }
+body.narrow .modal.detail #pr-row { display:none; }
+body.narrow .modal.detail #pr-row.open { display:flex; }
+.dsel { background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:9px;
+  padding:7px 11px; font-size:12.5px; cursor:pointer; font-family:inherit; }
+.prlink { color:var(--pr); font-size:14px; text-decoration:none; }
+.prlink:hover { filter:brightness(1.15); }
+.dsec h4 { font-size:10.5px; color:var(--faint); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:9px;
+  display:flex; align-items:center; }
+.dsec h4 .add { margin-left:auto; color:var(--accent); cursor:pointer; text-transform:none; letter-spacing:0; font-size:11px; }
+/* notes auto-grow to fit, capped so the docs section (first handover title) still
+   peeks out below; past the cap the notes themselves scroll */
+.dnotes { width:100%; background:var(--bg); border:1px solid var(--border-soft); border-radius:11px; color:var(--text);
+  padding:12px 14px; font-size:13.5px; line-height:1.6; font-family:inherit; resize:none; min-height:84px;
+  max-height:40dvh; overflow-y:auto; }
+.dnotes-view { background:var(--bg); border:1px solid var(--border-soft); border-radius:11px;
+  padding:12px 14px; font-size:13.5px; line-height:1.6; max-height:40dvh; overflow-y:auto;
+  cursor:text; word-break:break-word; }
+.dnotes-view:hover { border-color:var(--border); }
+.dnotes-view.empty-note { color:var(--faint); min-height:84px; }
+.dnotes-view ul { margin:2px 0; padding-left:20px; }
+.dnotes-view li { margin:2px 0; }
+.dnotes-view code { font-family:var(--mono); font-size:12px; background:var(--raised); border-radius:5px; padding:1px 5px; }
+.dnotes-view a { color:var(--accent); text-decoration:none; }
+.dnotes-view a[href] { word-break:break-all; }
+.dnotes-view a:hover { text-decoration:underline; }
+.dnotes-view .jref { cursor:pointer; font-weight:600; }
+.dnotes-view .nsp { height:9px; }
+.dcols { display:flex; gap:18px; align-items:flex-start; }
+.dcols .dcol { flex:1; min-width:0; }
+.docs { display:flex; flex-direction:column; gap:8px; max-height:300px; overflow-y:auto; }
+.doc { display:flex; align-items:center; gap:11px; padding:10px 12px; background:var(--bg);
+  border:1px solid var(--border-soft); border-radius:11px; cursor:pointer; transition:.12s; }
+.doc:hover { border-color:var(--accent); background:var(--raised); }
+.doc .di { width:26px; height:26px; border-radius:7px; display:grid; place-items:center; font-family:var(--mono);
+  font-size:9px; font-weight:700; flex-shrink:0; }
+.doc .di.md { background:color-mix(in oklch,var(--accent) 20%,var(--bg)); color:var(--accent); }
+.doc .di.code { background:color-mix(in oklch,var(--warn) 20%,var(--bg)); color:var(--warn); }
+.doc .di.other { background:var(--raised); color:var(--muted); }
+.doc .dmeta { min-width:0; }
+.doc .dn { font-size:12.5px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.doc .dp { font-family:var(--mono); font-size:10px; color:var(--faint); margin-top:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.doc .dcp { margin-left:auto; flex-shrink:0; width:22px; height:22px; border:none; border-radius:6px;
+  background:transparent; color:var(--faint); font-size:13px; line-height:1; cursor:pointer; transition:.12s; }
+.doc .dcp:hover { background:var(--accent-bg); color:var(--accent); }
+.doc .dcp.ok { color:var(--ok); }
+.doc .drm { flex-shrink:0; width:22px; height:22px; border:none; border-radius:6px;
+  background:transparent; color:var(--faint); font-size:16px; line-height:1; cursor:pointer; transition:.12s; }
+.doc .drm:hover { background:color-mix(in oklch,var(--fail) 18%,var(--bg)); color:var(--fail); }
+.cbranch { margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--faint); text-transform:none; letter-spacing:0; }
+.commits { display:flex; flex-direction:column; max-height:300px; overflow-y:auto; }
+.commit { position:relative; }
+.commit:not(:last-child)::before { content:''; position:absolute; left:9.5px; top:0; bottom:0; width:1.5px; background:var(--border); }
+.crow { display:flex; align-items:flex-start; gap:10px; padding:8px 4px 8px 24px; cursor:pointer; position:relative; border-radius:8px; }
+.crow:hover { background:var(--raised); }
+.cnode { position:absolute; left:6px; top:13px; width:8px; height:8px; border-radius:50%; background:var(--accent);
+  box-shadow:0 0 0 3px var(--surface); z-index:1; }
+.ctext { flex:1; min-width:0; }
+.cmain { font-size:12.5px; color:var(--text); line-height:1.35;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.chash { font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+.cdate { font-size:10px; color:var(--faint); text-align:right; margin-top:2px; }
+.cdetail { display:none; padding:2px 4px 10px 24px; }
+.commit.open .cdetail { display:block; }
+.cmsg { font-family:var(--mono); font-size:11px; color:var(--muted); white-space:pre-wrap; word-break:break-word;
+  margin:0 0 8px; padding:8px 10px; background:var(--bg); border:1px solid var(--border-soft); border-radius:8px; line-height:1.5; }
+.cfiles { display:flex; flex-direction:column; gap:3px; }
+.cf { display:flex; align-items:center; gap:8px; font-size:11px; }
+.cfp { font-family:var(--mono); color:var(--muted); word-break:break-all; }
+.cs { width:15px; text-align:center; font-family:var(--mono); font-size:9px; font-weight:700; border-radius:4px; flex-shrink:0; }
+.cs-A { background:color-mix(in oklch,var(--ok) 22%,var(--bg)); color:var(--ok); }
+.cs-M { background:color-mix(in oklch,var(--warn) 22%,var(--bg)); color:var(--warn); }
+.cs-D { background:color-mix(in oklch,var(--fail) 22%,var(--bg)); color:var(--fail); }
+.cs-R { background:color-mix(in oklch,var(--accent) 22%,var(--bg)); color:var(--accent); }
+.cmore { display:none; width:100%; background:none; border:1px dashed var(--border-soft); color:var(--muted);
+  border-radius:9px; padding:8px; font-size:11.5px; font-family:inherit; cursor:pointer; margin-top:6px; }
+.cmore:hover { color:var(--accent); border-color:var(--accent); }
+.dollar { padding:18px 22px; border-top:1px solid var(--border-soft); display:flex; gap:10px; justify-content:flex-end; }
+.dbtn { background:var(--raised); border:1px solid var(--border-soft); color:var(--muted); border-radius:10px;
+  padding:9px 16px; font-size:12.5px; cursor:pointer; }
+.dbtn:hover { border-color:var(--accent); color:var(--accent); }
+.dbtn.danger:hover { border-color:var(--fail); color:var(--fail); }
+.dbtn.prime { background:var(--accent-bg); border-color:color-mix(in oklch,var(--accent) 40%,transparent); color:var(--accent); }
+
+/* =====================================================================
+   NARROW MODE (decision 7): rail-only, full-screen-friendly. Applied via
+   body.narrow, toggled by matchMedia('(max-width:760px), (max-aspect-ratio:3/4)')
+   — width covers phones-in-portrait-and-landscape, the aspect-ratio clause
+   also catches narrow-but-tall split-screen/tablet windows that width alone
+   would miss. ?m=1 forces it as a manual escape hatch.
+   ===================================================================== */
+.mcaret { display:none; }
+.m-fld { width:100%; background:var(--bg); border:1px solid var(--border-soft); border-radius:11px;
+  color:var(--text); padding:12px 14px; font-size:14px; font-family:inherit; }
+.m-fld::placeholder { color:var(--faint); }
+.m-fld.mono { font-family:var(--mono); font-size:12.5px; }
+
+body.narrow { height:auto; min-height:100vh; overflow-x:hidden; overflow-y:auto; }
+body.narrow #strip { height:auto; flex-wrap:wrap; align-items:center; gap:8px; padding:9px 12px; position:sticky; top:0; }
+body.narrow .brand { flex:1 1 auto; padding:0; border-right:none; gap:9px; }
+body.narrow .brand .logo { width:32px; height:32px; }
+body.narrow .strip-right { margin-left:auto; padding:0; gap:9px; }
+
+body.narrow #body { flex-direction:column; gap:12px; padding:12px; overflow:visible; min-height:0; }
+body.narrow .jobs-card { height:auto; }
+body.narrow #jobs-list { overflow:visible; flex:none; max-height:none; }
+body.narrow .qadd { padding:11px 12px; }
+
+body.narrow .modal-bg, body.slab .modal-bg { place-items:stretch; }
+body.narrow .modal.detail, body.slab .modal.detail { width:100vw; height:100dvh; max-height:100dvh; border-radius:0; border:none; }
+body.narrow .modal.detail.m-add, body.slab .modal.detail.m-add {
+  width:min(480px,94vw); height:auto; max-height:none; border-radius:18px; border:1px solid var(--border); margin:auto; }
+/* stacked columns must STRETCH to viewport width (flex-start would size them to
+   their content, letting long doc paths force a horizontal scroll) */
+body.narrow .modal.detail .dcols { flex-direction:column; gap:18px; align-items:stretch; }
+/* title drops below the icon/number/close row so it can run full width */
+body.narrow .modal.detail .mhead { flex-wrap:wrap; row-gap:9px; padding:14px 18px; }
+body.narrow .modal.detail .mhead h2 { flex-basis:100%; order:9; }
+/* on a phone the docs are the jump-off point — they go first, and long commit
+   histories collapse to the latest few behind a "show all" toggle */
+body.narrow .modal.detail .col-docs { order:-1; }
+body.narrow .modal.detail .drow { gap:12px; }
+body.narrow .modal.detail .dfield { flex:1; flex-direction:column; align-items:stretch; gap:6px; }
+body.narrow .modal.detail .dfield.fwide { flex-basis:100%; }
+body.narrow .modal.detail .commit.extra { display:none; }
+body.narrow .modal.detail .commits.expanded .commit.extra { display:block; }
+body.narrow .modal.detail .commits:not(.expanded) .cmore { display:block; }
+body.narrow .modal.detail .dsec h4 .add { display:none; }
+body.narrow .modal.detail .commits, body.narrow .modal.detail .docs { max-height:none; }
+body.narrow .dollar, body.slab .dollar { justify-content:stretch; flex-wrap:wrap; }
+body.narrow .dollar .dbtn, body.slab .dollar .dbtn { flex:1; }
+body.narrow .dollar .dbtn.prime, body.slab .dollar .dbtn.prime { flex:2; }
+
+/* takeover board header on a portrait phone: drop the badge and the Brief label
+   so search / add / close all stay on-screen */
+body.narrow .modal.board .mhead { padding:13px 14px; gap:8px; }
+body.narrow .modal.board .mhead .badge { display:none; }
+body.narrow .modal.board .hbtn .btxt { display:none; }
+body.narrow .board-cols { padding:12px 14px; }
+
+/* =====================================================================
+   SLAB MODE: phone held LANDSCAPE (short viewport). The rail hides and
+   the kanban board IS the app, full width — rotating the phone flips
+   between rail (portrait/narrow) and board (landscape/slab). ?land=1
+   forces it for testing/screenshots. ADO mode has no board, so the rail
+   stays put there (body.ado).
+   ===================================================================== */
+body.slab #strip { height:auto; padding:7px 12px; }
+body.slab .brand { padding:0; border-right:none; gap:9px; }
+body.slab .brand .logo { width:30px; height:30px; }
+body.slab .strip-right { padding:0 0 0 12px; }
+body.slab #body { padding:10px; gap:10px; }
+body.slab #board-pane .board-cols { padding:12px; }
+body.slab:not(.ado) #rail { display:none; }
+body.slab.ado #board-pane { display:none !important; }
+body.slab.ado #rail { width:auto; flex:1; }
+
+/* iOS Safari auto-zooms into any focused field whose font-size is under 16px —
+   on touch devices hold every form control at 16px so it never fires. !important
+   is deliberate: this must beat every per-component size, and only here. */
+@media (pointer:coarse) {
+  input, select, textarea { font-size:16px !important; }
+}
+</style>
+</head>
+<body>
+<script>
+  (function () {
+    var t;
+    try { t = localStorage.getItem('jobs-theme'); } catch (e) {}
+    if (!t) t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    if (t === 'light') document.body.classList.add('light');
+  })();
+</script>
+
+<header id="strip">
+  <div class="brand">
+    <div class="logo">
+      <!-- Kanban board mark: ready (teal) / review (amber) / done (green) columns, cards stepping
+           down as work clears. Self-contained tile so it holds from here down to the 16px favicon
+           (kept in sync with the <link rel="icon"> in <head>). -->
+      <svg viewBox="0 0 48 48" fill="none">
+        <rect x="1.5" y="1.5" width="45" height="45" rx="11" fill="#211d16"/>
+        <rect x="8"    y="9" width="9.6" height="30" rx="2.4" fill="#fff" opacity=".065"/>
+        <rect x="19.2" y="9" width="9.6" height="30" rx="2.4" fill="#fff" opacity=".065"/>
+        <rect x="30.4" y="9" width="9.6" height="30" rx="2.4" fill="#fff" opacity=".065"/>
+        <rect x="10"   y="12" width="5.6" height="5" rx="1.5" fill="#7cc3cf"/>
+        <rect x="10"   y="19" width="5.6" height="5" rx="1.5" fill="#7cc3cf" opacity=".58"/>
+        <rect x="10"   y="26" width="5.6" height="5" rx="1.5" fill="#7cc3cf" opacity=".58"/>
+        <rect x="21.2" y="12" width="5.6" height="5" rx="1.5" fill="#d8a25f"/>
+        <rect x="21.2" y="19" width="5.6" height="5" rx="1.5" fill="#d8a25f" opacity=".58"/>
+        <rect x="32.4" y="12" width="5.6" height="5" rx="1.5" fill="#74c79c"/>
+      </svg>
+    </div>
+    <div class="bt"><b>Jobs</b><span>localhost:7799</span></div>
+  </div>
+
+  <div class="strip-right">
+    <span id="strip-age"></span>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light / dark" aria-label="Toggle light / dark theme">
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    </button>
+  </div>
+</header>
+
+<div id="body">
+  <div id="board-pane">
+    <div class="card">
+      <div class="ch"><span class="ico">▦</span><h3>Board</h3><span class="badge" id="board-count">0</span>
+        <div class="bsearch">
+          <input placeholder="Search…" autocomplete="off" oninput="onBoardSearchInput(event)">
+          <button class="bsearch-clear hidden" onclick="clearBoardSearch()" title="Clear">×</button>
+        </div>
+        <button class="hbtn" onclick="openBrief()" title="Open latest brief">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg>
+          <span class="btxt">Brief</span></button>
+        <button class="hbtn" onclick="openQuickAddSheet()">+ New job</button>
+      </div>
+      <div class="board-cols" id="board-cols-embed"></div>
+    </div>
+  </div>
+
+  <div id="rail">
+    <div class="card jobs-card">
+      <div class="ch">
+        <span class="ico" id="jobs-ico">✓</span><h3 id="jobs-title">Jobs</h3><span class="badge" id="jobs-count">0</span>
+        <button class="hbtn" id="jobs-brief" onclick="openBrief()" title="Open latest brief">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg>
+          <span class="btxt">Brief</span></button>
+        <button class="jsearch-btn" id="jobs-search-btn" onclick="openJobsSearch()" title="Search jobs">
+          <svg class="fico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        </button>
+        <button class="expand" id="jobs-expand" onclick="jobsExpandTap()"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="5" height="13" rx="1"/></svg>Expand</button>
+        <div class="jsearch-pop hidden" id="jobs-search-pop">
+          <svg class="fico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="jobs-search-input" placeholder="Search jobs…" autocomplete="off"
+            oninput="onJobsSearchInput(event)" onkeydown="onJobsSearchKeydown(event)">
+          <button class="jsearch-clear" onclick="closeJobsSearch()" title="Clear">×</button>
+        </div>
+      </div>
+      <div class="modebar">
+        <div class="seg" id="jobs-seg" data-mode="personal">
+          <span class="glider"></span>
+          <button data-m="personal" class="on" onclick="setJobsMode('personal')"><span class="sgl">✓</span>Personal</button>
+          <button data-m="ado" onclick="setJobsMode('ado')"><span class="sgl">⬡</span>Assigned</button>
+        </div>
+      </div>
+      <div class="qadd" id="jobs-qadd" onclick="qaddOpen()">
+        <span class="qhint" id="qadd-hint">+ New job</span>
+        <input id="qadd-input" class="hidden" placeholder="What needs doing?" autocomplete="off"
+          onkeydown="qaddKey(event)" onblur="qaddBlur()">
+        <button class="qgo hidden" id="qadd-go" onmousedown="event.preventDefault()" onclick="qaddSubmit()">Create</button>
+      </div>
+      <div class="idrow" id="jobs-idrow">
+        <span class="avatar" id="ado-initials">··</span>
+        <span class="idsum" id="ado-summary">—</span>
+        <button class="idrefresh" id="ado-refresh" onclick="loadAdo(true)" title="Refresh from ADO">↻</button>
+      </div>
+      <div id="jobs-list" onclick="jobsListClick(event)"></div>
+      <div class="synced hidden" id="ado-synced" onclick="loadAdo(true)"><span class="pulse"></span><span id="ado-synced-txt"></span></div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-root"></div>
+
+<script>
+'use strict';
+
+function toggleTheme() {
+  const light = document.body.classList.toggle('light');
+  try { localStorage.setItem('jobs-theme', light ? 'light' : 'dark'); } catch (e) {}
+}
+
+const API = '';
+let cfg = null;
+
+async function init() {
+  try { cfg = await fetchJSON('/config'); }
+  catch {
+    document.getElementById('jobs-list').innerHTML =
+      `<div class="empty">Could not reach sidecar — is jobs-sidecar.ps1 running?</div>`;
+    cfg = {};
+  }
+  loadJobs();
+  initJobsMode();
+  setInterval(pollJobs, 5000);
+  setInterval(tickAge, 5000);
+}
+
+function fetchJSON(path, opts) { return fetch(API + path, opts).then(r => r.json()); }
+function h(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function jss(s) { return h(String(s ?? '').replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
+function isHttpUrl(s) { return /^https?:\/\//.test(String(s || '')); }
+function prChip(j) {
+  return isHttpUrl(j.pr) ? `<a class="prchip" href="${h(j.pr)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">PR</a>` : '';
+}
+
+let lastPollAt = null;
+function tickAge() {
+  if (railShowsAdo()) updateAdoSynced();
+  const el = document.getElementById('strip-age');
+  if (!lastPollAt) { el.textContent = ''; return; }
+  const s = Math.round((Date.now() - lastPollAt) / 1000);
+  el.textContent = `polled ${s < 5 ? 'just now' : s + 's ago'}`;
+}
+
+// --- jobs --------------------------------------------------------------------
+const JOB_STATUSES = ['Planned','Ready','In progress','Review','PR','Done','Parked','Blocked','Removed'];
+const BOARD_COLS = ['Planned','Ready','In progress','Review','PR','Blocked','Parked','Done'];
+const RAIL_ORDER = ['Review','In progress','PR','Ready','Planned','Blocked','Parked','Done','Removed'];
+const railRank = s => { const i = RAIL_ORDER.indexOf(s); return i < 0 ? RAIL_ORDER.length : i; };
+const DOT = { 'In progress':'var(--accent)', 'Review':'var(--review)', 'Ready':'var(--ready)', 'Blocked':'var(--fail)', 'Parked':'var(--warn)', 'Planned':'var(--faint)', 'PR':'var(--pr)', 'Done':'var(--ok)', 'Removed':'var(--faint)' };
+let jobs = [];
+const jobClass = s => 's-' + String(s||'').toLowerCase().replace(/\s+/g,'');
+const isActive = j => j.status !== 'Removed' && j.status !== 'Done';
+
+let jobsQuery = '';
+function jobMatches(j, q) {
+  const qq = String(q || '').trim().toLowerCase().replace(/^#/, '');
+  if (!qq) return true;
+  if (j.num != null && String(j.num).toLowerCase().includes(qq)) return true;
+  return [j.label, j.note, j.branch].some(f => f && String(f).toLowerCase().includes(qq));
+}
+
+// Board search: scroll the kanban container(s) so the first (leftmost) column with a
+// match is in view. Runs on every search keystroke, both the modal board and the
+// embedded wide-viewport pane share the .board-cols class. No-op on empty query
+// (search cleared) or no matches, and skipped if the column is already fully visible.
+function jumpBoardColumns() {
+  const q = jobsQuery.trim();
+  if (!q) return;
+  const firstCol = BOARD_COLS.find(col => jobs.some(j => j.status === col && jobMatches(j, jobsQuery)));
+  if (!firstCol) return;
+  document.querySelectorAll('.board-cols').forEach(container => {
+    const el = container.querySelector(`.bcol[data-col="${CSS.escape(firstCol)}"]`);
+    if (!el) return;
+    const contRect = container.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const fullyVisible = elRect.left >= contRect.left && elRect.right <= contRect.right;
+    if (!fullyVisible) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+  });
+}
+
+let jobsSnapshot = '';
+async function loadJobs() {
+  try {
+    const d = await fetchJSON('/jobs');
+    const snap = JSON.stringify(d.jobs || []);
+    if (snap === jobsSnapshot) { lastPollAt = Date.now(); tickAge(); return; }
+    jobsSnapshot = snap;
+    jobs = d.jobs || [];
+    renderJobsRail();
+    renderBoardPane();
+    refreshOpenModals();
+    lastPollAt = Date.now();
+    tickAge();
+  } catch { }
+}
+
+function openBrief() {
+  window.open('/briefs/latest.html', 'jobs-brief');
+}
+
+function jobsInteracting() {
+  if (dragId) return true;
+  const a = document.activeElement;
+  if (a && (a.id === 'jobs-search-input' || a.id === 'qadd-input')) return true;
+  return !!(a && a.closest && a.closest('.modal') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+}
+async function pollJobs() {
+  // the wide board pane shows personal jobs regardless of jobsMode, so keep polling there
+  if ((jobsMode !== 'personal' && !isWideView()) || jobsInteracting()) return;
+  await loadJobs();
+}
+
+function renderJobsRail() {
+  if (railShowsAdo()) return;
+  const list = document.getElementById('jobs-list');
+  const filtering = !!jobsQuery.trim();
+  const pool = filtering ? jobs : jobs.filter(isActive);
+  const shown = pool.filter(j => jobMatches(j, jobsQuery)).sort((a,b) => railRank(a.status) - railRank(b.status));
+  document.getElementById('jobs-count').textContent = shown.length;
+  if (!shown.length) {
+    list.innerHTML = filtering
+      ? `<div class="empty">No jobs match "${h(jobsQuery)}".</div>`
+      : `<div class="empty">No jobs yet. Add one to get started.</div>`;
+    return;
+  }
+  list.innerHTML = shown.map(j => `
+    <div class="job ${jobClass(j.status)}" onclick="openJob('${h(j.id)}')">
+      <div class="jhead">
+        ${j.num ? `<span class="jnum">#${j.num}</span>` : ''}
+        <span class="st">${h(j.status)}</span>
+      </div>
+      <div class="jl">${h(j.label)}</div>
+      ${j.branch ? `<div class="jb">${h(j.branch)}</div>` : ''}
+      ${prChip(j)}
+    </div>`).join('');
+}
+
+// Wide-viewport embedded board pane — same column markup as the modal board, just rendered
+// inline instead of inside a modal-bg. Kept in sync by loadJobs()/refreshOpenModals().
+function renderBoardPane() {
+  const pane = document.getElementById('board-cols-embed');
+  if (!pane) return;
+  document.getElementById('board-count').textContent = jobs.filter(isActive).length;
+  pane.innerHTML = renderBoardCols();
+  attachBoardWheel(pane);
+}
+
+// Wheel over the board scrolls the hovered column up/down while it still has
+// somewhere to go; the moment it can't (or you're over a header/gap), the
+// vertical wheel slides the whole board sideways. Idempotent per element so
+// re-renders that reuse the same container don't stack listeners.
+function attachBoardWheel(bc) {
+  if (!bc || bc.dataset.wheelBound) return;
+  bc.dataset.wheelBound = '1';
+  bc.addEventListener('wheel', e => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // genuine horizontal swipe: let it scroll natively
+    const cards = e.target.closest('.bcards');
+    if (cards) {
+      const room = e.deltaY > 0
+        ? cards.scrollHeight - cards.clientHeight - cards.scrollTop  // room below
+        : cards.scrollTop;                                          // room above
+      if (room > 0) return; // the column can still scroll this way — let it
+    }
+    bc.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
+}
+
+// --- jobs: rail search pop-out ----------------------------------------------
+let jobsSearchOpen = false;
+function updateJobsSearchIcon() {
+  const btn = document.getElementById('jobs-search-btn');
+  if (btn) btn.classList.toggle('active', !!jobsQuery.trim() && !jobsSearchOpen);
+}
+function openJobsSearch() {
+  jobsSearchOpen = true;
+  const pop = document.getElementById('jobs-search-pop');
+  const expandBtn = document.getElementById('jobs-expand');
+  pop.style.right = (expandBtn.offsetWidth + 8) + 'px';
+  pop.classList.remove('hidden');
+  const input = document.getElementById('jobs-search-input');
+  input.value = jobsQuery;
+  input.focus();
+  updateJobsSearchIcon();
+}
+function closeJobsSearchPopout() {
+  jobsSearchOpen = false;
+  document.getElementById('jobs-search-pop').classList.add('hidden');
+  updateJobsSearchIcon();
+}
+function closeJobsSearch() {
+  closeJobsSearchPopout();
+  jobsQuery = '';
+  document.getElementById('jobs-search-input').value = '';
+  applySearch(null);
+}
+
+// One search state, three possible inputs (rail pop-out, embedded board pane,
+// takeover board). Re-render every board surface and mirror the query into the
+// inputs the user ISN'T typing in.
+function applySearch(src) {
+  renderJobsRail();
+  renderBoardPane();
+  const mcols = document.querySelector('.modal.board .board-cols');
+  if (mcols) mcols.innerHTML = renderBoardCols();
+  document.querySelectorAll('.bsearch input').forEach(i => { if (i !== src) i.value = jobsQuery; });
+  document.querySelectorAll('.bsearch-clear').forEach(b => b.classList.toggle('hidden', !jobsQuery));
+  const railInput = document.getElementById('jobs-search-input');
+  if (railInput && railInput !== src) railInput.value = jobsQuery;
+  updateJobsSearchIcon();
+  jumpBoardColumns();
+}
+
+// --- quick-add: title-only, pinned at the top of the rail --------------------
+function qaddOpen() {
+  const q = document.getElementById('jobs-qadd');
+  q.classList.add('open');
+  document.getElementById('qadd-hint').classList.add('hidden');
+  document.getElementById('qadd-input').classList.remove('hidden');
+  document.getElementById('qadd-go').classList.remove('hidden');
+  document.getElementById('qadd-input').focus();
+}
+function qaddClose() {
+  const q = document.getElementById('jobs-qadd');
+  q.classList.remove('open');
+  document.getElementById('qadd-hint').classList.remove('hidden');
+  document.getElementById('qadd-input').classList.add('hidden');
+  document.getElementById('qadd-go').classList.add('hidden');
+  document.getElementById('qadd-input').value = '';
+}
+function qaddKey(e) {
+  if (e.key === 'Enter') qaddSubmit();
+  if (e.key === 'Escape') { e.stopPropagation(); qaddClose(); }
+}
+function qaddBlur() { if (!document.getElementById('qadd-input').value.trim()) qaddClose(); }
+function qaddSubmit() {
+  const t = document.getElementById('qadd-input').value.trim();
+  if (!t) return;
+  qaddClose();
+  addJob(t, '', '');
+}
+
+// title-only sheet — reached from the board headers (+ New job) and the FAB variant
+function openQuickAddSheet() {
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-bg" onclick="closeModal()">
+      <div class="modal detail m-add" onclick="event.stopPropagation()">
+        <div class="mhead"><span class="mico">✓</span><h2>New job</h2>
+          <button class="mclose" onclick="closeModal()">×</button></div>
+        <div class="detail-body">
+          <div class="dsec"><h4>Title</h4>
+            <input class="m-fld" id="qs-title" placeholder="What needs doing?" autocomplete="off"
+              onkeydown="if(event.key==='Enter')submitQuickAdd()"></div>
+          <div class="empty">Repo, branch and notes live in the detail view — it opens as soon as the job is created.</div>
+        </div>
+        <div class="dollar">
+          <button class="dbtn" onclick="closeModal()">Cancel</button>
+          <button class="dbtn prime" onclick="submitQuickAdd()">Create job</button>
+        </div>
+      </div>
+    </div>`;
+  setTimeout(() => document.getElementById('qs-title')?.focus(), 60);
+}
+function submitQuickAdd() {
+  const t = document.getElementById('qs-title').value.trim();
+  if (!t) { document.getElementById('qs-title').focus(); return; }
+  addJob(t, '', '');
+}
+function onJobsSearchInput(e) {
+  jobsQuery = e.target.value;
+  applySearch(e.target);
+}
+function onJobsSearchKeydown(e) {
+  if (e.key === 'Escape') closeJobsSearch();
+}
+
+// --- jobs: Assigned (ADO) mode --------------------------------------------
+// The Personal/Assigned mode only exists on narrow/slab viewports, where the rail
+// is the whole app. On a wide viewport the board pane owns personal jobs, so the
+// rail is always the Assigned card — railShowsAdo() is the single source of truth
+// for what the rail renders, fed by both setJobsMode() and applyResponsiveMode().
+let jobsMode = 'personal';
+let adoData = null;
+let adoFetchedAt = null;
+
+const isWideView = () => !document.body.classList.contains('narrow') && !document.body.classList.contains('slab');
+const railShowsAdo = () => isWideView() || jobsMode === 'ado';
+
+function initJobsMode() {
+  let m = 'personal';
+  try { const v = localStorage.getItem('jobs-mode'); if (v === 'ado' || v === 'personal') m = v; } catch {}
+  setJobsMode(m);
+}
+
+function setJobsMode(m) {
+  jobsMode = m;
+  document.getElementById('jobs-seg').dataset.mode = m;
+  document.querySelectorAll('#jobs-seg button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+  document.body.classList.toggle('ado', m === 'ado');
+  try { localStorage.setItem('jobs-mode', m); } catch {}
+  applyRail();
+}
+
+function applyRail() {
+  const ado = railShowsAdo();
+  document.getElementById('jobs-ico').textContent = ado ? '⬡' : '✓';
+  document.getElementById('jobs-title').textContent = ado ? 'Assigned' : 'Jobs';
+  document.getElementById('jobs-idrow').style.display = ado ? 'flex' : 'none';
+  document.getElementById('jobs-qadd').classList.toggle('hidden', ado);
+  document.getElementById('jobs-search-btn').classList.toggle('hidden', ado);
+  document.getElementById('ado-synced').classList.toggle('hidden', !ado);
+  const exp = document.getElementById('jobs-expand');
+  exp.innerHTML = ado ? 'Open in ADO ↗' : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="5" height="13" rx="1"/></svg>Expand';
+  exp.classList.toggle('aslink', ado && isWideView());
+  if (ado) { closeJobsSearchPopout(); if (adoData) renderAdo(); loadAdo(false); }
+  else { renderJobsRail(); updateJobsSearchIcon(); }
+}
+
+function jobsExpandTap() {
+  if (railShowsAdo()) { const u = cfg && cfg.ado && cfg.ado.boardUrl; if (u) window.open(u, '_blank', 'noopener'); }
+  else openKanban();
+}
+
+function jobsListClick(e) {
+  if (railShowsAdo()) return;
+  if (!e.target.closest('.job')) jobsEmptyTap();
+}
+
+let adoLoading = false;
+async function loadAdo(refresh) {
+  if (!railShowsAdo()) return;
+  if (adoLoading && !refresh) return;
+  adoLoading = true;
+  const list = document.getElementById('jobs-list');
+  const btn  = document.getElementById('ado-refresh');
+  if (refresh) btn.classList.add('spin');
+  if (!adoData) list.innerHTML = `<div class="empty">Loading from ADO…</div>`;
+  const demo = new URLSearchParams(location.search).get('demo') === '1';
+  const qs = demo ? '?demo=1' : (refresh ? '?refresh=1' : '');
+  try {
+    const d = await fetchJSON('/ado/assigned' + qs);
+    if (d && d.error && !d.stale) { renderAdoError(d.error); return; }
+    adoData = d;
+    renderAdo();
+  } catch (err) {
+    console.error('[loadAdo]', err);
+    renderAdoError("Couldn't reach the sidecar — is the jobs sidecar running?");
+  } finally {
+    adoLoading = false;
+    btn.classList.remove('spin');
+  }
+}
+
+function renderAdoError(msg) {
+  if (!railShowsAdo()) return;
+  document.getElementById('jobs-list').innerHTML =
+    `<div class="empty">${h(msg)} <a href="#" onclick="loadAdo(true);return false;" style="color:var(--accent)">Retry</a></div>`;
+  document.getElementById('ado-summary').innerHTML = '—';
+  document.getElementById('ado-initials').textContent = '··';
+  document.getElementById('ado-synced').classList.add('err');
+  document.getElementById('ado-synced-txt').textContent = 'ADO unreachable — tap to retry';
+}
+
+const adoStateClass = s => 'a-' + String(s||'').toLowerCase().replace(/\s+/g,'');
+
+function renderAdo() {
+  if (!railShowsAdo() || !adoData) return;
+  const d = adoData, c = d.counts || { stories:0, tasks:0, done:0 };
+  document.getElementById('jobs-count').textContent = c.tasks;
+  const av = document.getElementById('ado-initials');
+  av.textContent = (d.identity && d.identity.initials) || '··';
+  av.title = (d.identity && d.identity.upn) || '';
+  document.getElementById('ado-summary').innerHTML =
+    `<b>${Number(c.stories)}</b> ${c.stories===1?'story':'stories'} · <b>${Number(c.tasks)}</b> ${c.tasks===1?'task':'tasks'} · <span class="done">${Number(c.done)} done</span>`;
+  adoFetchedAt = d.fetchedAt;
+  const syncEl = document.getElementById('ado-synced');
+  if (d.stale) {
+    syncEl.classList.add('err');
+    document.getElementById('ado-synced-txt').textContent = 'Stale data — ADO unreachable · tap to retry';
+    console.warn('[ADO stale]', d.staleReason);
+  } else {
+    syncEl.classList.remove('err');
+  }
+  updateAdoSynced();
+
+  const stories = d.stories || [];
+  const list = document.getElementById('jobs-list');
+  if (!stories.length) { list.innerHTML = `<div class="empty">No open tasks assigned to you this sprint. 🎉</div>`; return; }
+  list.innerHTML = stories.map(renderStory).join('');
+}
+
+function renderStory(s) {
+  const tasks = (s.tasks || []).map(t => `
+    <div class="task">
+      <div class="task-head" onclick="adoToggle(this.closest('.task'))">
+        <div class="task-top">
+          <span class="id"><span class="hash">#</span>${t.id}</span>
+          <span class="state ml ${adoStateClass(t.state)}">${h(t.state)}</span>
+        </div>
+        <div class="task-title">${h(t.title)}</div>
+      </div>
+      <div class="ado-pane">
+        <div class="ado-text"${t.description?'':' style="color:var(--faint)"'}>${t.description ? h(t.description) : 'No description.'}</div>
+        <a class="ado-open" href="${h(t.url)}" target="_blank" rel="noopener">Open in ADO ↗</a>
+      </div>
+    </div>`).join('');
+  const tags = (s.tags || []).map(tg => `<span class="ado-tag">${h(tg)}</span>`).join('');
+  const hasDesc = !!s.description;
+  const hasAc   = !!s.ac;
+  return `
+    <div class="story ${s.state==='Ready'?'st-ready':''}">
+      <div class="story-head">
+        <div class="story-top">
+          <span class="story-type">Story</span>
+          <span class="id"><span class="hash">#</span>${s.id}</span>
+          <span class="state ml ${adoStateClass(s.state)}">${h(s.state)}</span>
+        </div>
+        <div class="story-title">${h(s.title)}</div>
+      </div>
+      <div class="story-meta">
+        <div class="ado-meta-row">
+          ${tags ? `<div class="ado-tags">${tags}</div>` : ''}
+          <a class="ado-open" href="${h(s.url)}" target="_blank" rel="noopener">Open in ADO ↗</a>
+        </div>
+        ${hasDesc || hasAc ? `
+        <div class="ado-toggles">
+          ${hasDesc ? `<button class="ado-toggle" data-idx="0" onclick="adoSectionToggle(this)">description <span class="ado-arr">↓</span></button>` : ''}
+          ${hasAc   ? `<button class="ado-toggle" data-idx="1" onclick="adoSectionToggle(this)">acceptance criteria <span class="ado-arr">↓</span></button>` : ''}
+        </div>` : ''}
+        ${hasDesc ? `<div class="ado-section" data-idx="0"><div class="ado-text">${h(s.description)}</div></div>` : ''}
+        ${hasAc   ? `<div class="ado-section" data-idx="1"><div class="ado-text">${h(s.ac)}</div></div>` : ''}
+      </div>
+      <div class="tasks">
+        <div class="tasks-h">Tasks<span class="ln"></span>${(s.tasks||[]).length}</div>
+        ${tasks}
+      </div>
+    </div>`;
+}
+
+function adoToggle(card) { if (card) card.classList.toggle('open'); }
+
+function adoSectionToggle(btn) {
+  const meta  = btn.closest('.story-meta');
+  const idx   = btn.dataset.idx;
+  const section = meta.querySelector(`.ado-section[data-idx="${idx}"]`);
+  const isOpen  = section.classList.toggle('open');
+  btn.classList.toggle('active', isOpen);
+}
+
+function updateAdoSynced() {
+  if (!adoFetchedAt) return;
+  if (adoData && adoData.stale) return;
+  const ago = s => { const sec = Math.max(0,(Date.now()-new Date(s).getTime())/1000);
+    if (sec<90) return 'just now'; if (sec<5400) return Math.round(sec/60)+'m ago';
+    if (sec<129600) return Math.round(sec/3600)+'h ago'; return Math.round(sec/86400)+'d ago'; };
+  document.getElementById('ado-synced-txt').textContent = `synced with ADO · ${ago(adoFetchedAt)}`;
+}
+
+async function saveJob(id, updates) {
+  const j = jobs.find(x => x.id === id);
+  if (!j) return;
+  const body = { id:j.id, label:j.label, branch:j.branch, repo:j.repo, status:j.status, note:j.note, docs:j.docs, pr:j.pr, ...updates };
+  await fetchJSON('/jobs', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  await loadJobs();
+}
+async function setJobStatus(id, status) { await saveJob(id, { status }); }
+async function setJobRepo(id, repo) {
+  await saveJob(id, { repo });
+  loadBranchOptions('job-repo', 'job-branch-list');
+  const j = jobs.find(x => x.id === id);
+  if (j) loadJobCommits(j);
+}
+async function setJobBranch(id, branch) {
+  await saveJob(id, { branch });
+  const j = jobs.find(x => x.id === id);
+  if (j) loadJobCommits(j);
+}
+async function setJobPr(id, pr) { await saveJob(id, { pr: pr.trim() }); }
+async function deleteJob(id) {
+  await fetchJSON(`/jobs/${id}`, { method:'DELETE' });
+  closeModal();
+  await loadJobs();
+}
+async function addJob(label, branch, repo) {
+  if (!label) return;
+  const job = await fetchJSON('/jobs', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label, branch, repo }) });
+  await loadJobs();
+  if (job && job.id) openJob(job.id, { focusNote: true });
+}
+
+// --- modals ----------------------------------------------------------------
+function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
+function refreshOpenModals() {
+  const board = document.querySelector('.modal.board');
+  if (board) {
+    const cols = document.querySelector('.modal.board .board-cols');
+    const x = cols ? cols.scrollLeft : 0;
+    const y = {};
+    board.querySelectorAll('.bcol').forEach(c => { y[c.dataset.col] = c.querySelector('.bcards').scrollTop; });
+    openKanban();
+    const cols2 = document.querySelector('.modal.board .board-cols');
+    if (cols2) cols2.scrollLeft = x;
+    document.querySelectorAll('.modal.board .bcol').forEach(c => {
+      if (c.dataset.col in y) c.querySelector('.bcards').scrollTop = y[c.dataset.col];
+    });
+  }
+  const open = document.querySelector('.modal.detail');
+  if (open && open.dataset.jobId) openJob(open.dataset.jobId);
+}
+
+function renderBoardCols() {
+  return BOARD_COLS.map(col => {
+    let items = jobs.filter(j => j.status === col && jobMatches(j, jobsQuery));
+    if (col === 'Done' || col === 'Removed') {
+      items = items.slice().sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    }
+    return `<div class="bcol" data-col="${h(col)}" ondragover="boardDragOver(event)" ondragleave="boardDragLeave(event)" ondrop="boardDrop(event)">
+      <div class="bcolh"><span class="dot" style="background:${DOT[col]}"></span>${col}<span class="ct">${items.length}</span></div>
+      <div class="bcards">${items.map(j =>
+        `<div class="bcard" draggable="true" ondragstart="boardDragStart(event,'${h(j.id)}')" ondragend="boardDragEnd(event)" onclick="openJob('${h(j.id)}')">${j.num?`<div class="bjnum">#${j.num}</div>`:''}<div class="l">${h(j.label)}</div>${j.branch?`<div class="b">${h(j.branch)}</div>`:''}${prChip(j)}</div>`).join('')}</div>
+    </div>`;
+  }).join('');
+}
+
+// The kanban TAKEOVER — full-screen board reached from the rail's Expand button
+// (narrow/portrait) or as a focus mode on wide viewports. Same modal-root plumbing,
+// but stretched edge to edge; creation goes through the + (quick-add sheet).
+function openKanban() {
+  const blocked = jobs.filter(j => j.status === 'Blocked').length;
+
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-bg takeover">
+      <div class="modal board">
+        <div class="mhead"><span class="mico">✓</span><h2>Jobs board</h2>
+          <span class="badge">${jobs.filter(isActive).length} active${blocked?` · ${blocked} blocked`:''}</span>
+          <div class="bsearch">
+            <input placeholder="Search…" autocomplete="off" value="${h(jobsQuery)}" oninput="onBoardSearchInput(event)">
+            <button class="bsearch-clear${jobsQuery ? '' : ' hidden'}" onclick="clearBoardSearch()" title="Clear">×</button>
+          </div>
+          <button class="hbtn" onclick="openBrief()" title="Open latest brief">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg>
+            <span class="btxt">Brief</span></button>
+          <button class="mplus" onclick="openQuickAddSheet()" title="New job">+</button>
+          <button class="mclose" onclick="closeModal()">×</button>
+        </div>
+        <div class="board-cols">${renderBoardCols()}</div>
+      </div>
+    </div>`;
+  attachBoardWheel(document.querySelector('.modal.board .board-cols'));
+}
+
+function onBoardSearchInput(e) {
+  jobsQuery = e.target.value;
+  applySearch(e.target);
+}
+function clearBoardSearch() {
+  jobsQuery = '';
+  applySearch(null);
+}
+
+async function loadBranchOptions(repoSelId, listId) {
+  const repo = document.getElementById(repoSelId).value;
+  const list = document.getElementById(listId);
+  list.innerHTML = '';
+  if (!repo) return;
+  try {
+    const r = await fetchJSON(`/git/branches?repo=${encodeURIComponent(repo)}`);
+    list.innerHTML = (r.branches || []).map(b => `<option value="${h(b)}">`).join('');
+  } catch { }
+}
+
+// --- kanban drag-and-drop (both the modal board and the embedded wide-viewport pane) -------
+let dragId = null;
+function boardDragStart(e, id) { dragId = id; e.currentTarget.classList.add('dragging'); }
+function boardDragEnd(e) { dragId = null; e.currentTarget.classList.remove('dragging'); }
+function boardDragOver(e) { if (dragId) { e.preventDefault(); e.currentTarget.classList.add('dragover'); } }
+function boardDragLeave(e) { e.currentTarget.classList.remove('dragover'); }
+function boardDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const col = e.currentTarget.dataset.col;
+  const j = jobs.find(x => x.id === dragId);
+  if (j && col && j.status !== col) setJobStatus(dragId, col);
+}
+
+function docType(name) {
+  if (/\.md$/i.test(name)) return 'md';
+  if (/\.(cs|ts|js|jsx|tsx|json|ps1|psm1|sql|cshtml|razor|xml|yml|yaml)$/i.test(name)) return 'code';
+  return 'other';
+}
+function openDoc(path, type) {
+  const p = String(path);
+  if (/^https?:\/\//i.test(p)) { window.open(p, '_blank', 'noopener'); return; }
+  if (/\.html?$/i.test(p)) { fetch(API + '/open', { method:'POST', body: JSON.stringify({ path: p }) }); return; }
+  const a = document.createElement('a');
+  a.href = 'vscode://file/' + p.replace(/\\/g,'/');
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function copyPath(path, btn) {
+  navigator.clipboard.writeText(String(path)).then(() => {
+    const prev = btn.textContent;
+    btn.textContent = '✓'; btn.classList.add('ok');
+    setTimeout(() => { btn.textContent = prev; btn.classList.remove('ok'); }, 1100);
+  });
+}
+
+function openJob(id, opts) {
+  opts = opts || {};
+  const j = jobs.find(x => x.id === id);
+  if (!j) return;
+  const docs = (Array.isArray(j.docs) ? j.docs : []).filter(Boolean);
+  const docsHtml = docs.length ? docs.map((d, i) => {
+    const name = d.name || (d.path||'').split(/[\\/]/).pop();
+    const t = d.type || docType(name);
+    return `<div class="doc" onclick="openDoc('${jss(d.path)}','${t}')" title="${h(d.path)}">
+        <span class="di ${t}">${t==='md'?'MD':t==='code'?'{}':'··'}</span>
+        <div class="dmeta"><div class="dn">${h(name)}</div><div class="dp">${h(d.path)}</div></div>
+        <button class="dcp" title="Copy path" onclick="event.stopPropagation();copyPath('${jss(d.path)}',this)">⧉</button>
+        <button class="drm" title="Remove document" onclick="event.stopPropagation();removeDoc('${h(j.id)}',${i})">×</button>
+      </div>`;
+  }).join('') : `<div class="empty">No linked documents yet.</div>`;
+
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-bg" onclick="closeModal()">
+      <div class="modal detail" data-job-id="${h(j.id)}" onclick="event.stopPropagation()">
+        <div class="mhead"><button class="mboard" title="Jobs board" onclick="openKanban()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="5" height="13" rx="1"/></svg></button><span class="mico">✓</span>${j.num ? `<span class="mnum">#${j.num}</span>` : ''}<h2>${h(j.label)}</h2><button class="mclose" onclick="closeModal()">×</button></div>
+        <div class="detail-body">
+          <div class="drow">
+            <label class="dfield">
+              <span class="dlabel">Status</span>
+              <select class="dsel" onchange="setJobStatus('${h(j.id)}', this.value)">
+                ${JOB_STATUSES.map(s => `<option${s===j.status?' selected':''}>${s}</option>`).join('')}
+              </select>
+            </label>
+            <label class="dfield">
+              <span class="dlabel">Repo</span>
+              <select class="dsel" id="job-repo" onchange="setJobRepo('${h(j.id)}', this.value)">
+                <option value="">— none —</option>
+                ${Object.keys(cfg.repos||{}).map(k => `<option${k===j.repo?' selected':''}>${h(k)}</option>`).join('')}
+              </select>
+            </label>
+            <label class="dfield fwide">
+              <span class="dlabel">Branch</span>
+              <span class="fwrap">
+                <input class="dsel mono-fld" id="job-branch" list="job-branch-list"
+                  value="${h(j.branch||'')}" placeholder="branch…" autocomplete="off"
+                  onchange="setJobBranch('${h(j.id)}', this.value)">
+                <datalist id="job-branch-list"></datalist>
+                <button class="prtoggle${isHttpUrl(j.pr) ? ' has' : ''}" type="button" title="PR"
+                  onclick="event.preventDefault();togglePrRow()">↗</button>
+              </span>
+            </label>
+          </div>
+          <div class="drow" id="pr-row">
+            <label class="dfield fwide">
+              <span class="dlabel">PR</span>
+              <span class="fwrap">
+                <input class="dsel mono-fld${isHttpUrl(j.pr) ? ' padlink' : ''}" id="job-pr"
+                  value="${h(j.pr||'')}" placeholder="PR URL…" autocomplete="off"
+                  onchange="setJobPr('${h(j.id)}', this.value)">
+                ${isHttpUrl(j.pr) ? `<a class="prlink" href="${h(j.pr)}" target="_blank" rel="noopener" title="Open PR">↗</a>` : ''}
+              </span>
+            </label>
+          </div>
+          <div class="dsec">
+            <h4>Notes</h4>
+            <div id="job-notes-wrap">${fmtNotes(j.note, j.id)}</div>
+          </div>
+          <div class="dcols">
+            <div class="dsec dcol col-commits">
+              <h4>Commits ${j.branch ? `<span class="cbranch">${h(j.repo || '?')} · ${h(j.branch)}</span>` : ''}</h4>
+              <div class="commits" id="job-commits"></div>
+            </div>
+            <div class="dsec dcol col-docs">
+              <h4>Linked documents <span class="add" onclick="addDoc('${h(j.id)}')">+ Add document</span></h4>
+              <div class="docs">${docsHtml}</div>
+            </div>
+          </div>
+        </div>
+        <div class="dollar">
+          <button class="dbtn danger" onclick="if(confirm('Delete this job?')) deleteJob('${h(j.id)}')">Delete</button>
+          <button class="dbtn prime" onclick="saveNotes('${h(j.id)}')">Save notes</button>
+          <button class="dbtn" onclick="closeModal()">Done</button>
+        </div>
+      </div>
+    </div>`;
+  loadJobCommits(j);
+  if (j.repo) loadBranchOptions('job-repo', 'job-branch-list');
+  if (opts.focusNote) setTimeout(() => notesEdit(j.id), 60);
+}
+
+async function loadJobCommits(j) {
+  const el = document.getElementById('job-commits');
+  if (!el) return;
+  if (!j.repo || !j.branch) {
+    el.innerHTML = `<div class="empty">Pin a repo and branch to see its commit graph.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="empty">Loading commits…</div>`;
+  let r;
+  try { r = await fetchJSON(`/git/log?repo=${encodeURIComponent(j.repo)}&branch=${encodeURIComponent(j.branch)}`); }
+  catch { el.innerHTML = `<div class="empty">Could not read git history.</div>`; return; }
+  if (r.error || !r.commits || !r.commits.length) {
+    el.innerHTML = `<div class="empty">${h(r.error === 'branch not found' ? `Branch "${j.branch}" not found in ${j.repo}.` : 'No commits on this branch.')}</div>`;
+    return;
+  }
+  const MOBILE_COMMITS = 5;   // narrow mode collapses the rest behind .cmore
+  el.innerHTML = r.commits.map((c, i) => {
+    const files = (c.files || []).map(f =>
+      `<div class="cf"><span class="cs cs-${h((f.status||'').charAt(0))}">${h((f.status||'').charAt(0))}</span><span class="cfp">${h(f.path)}</span></div>`).join('');
+    const msg = (c.body && c.body.trim()) ? `<pre class="cmsg">${h(c.body.trim())}</pre>` : '';
+    return `<div class="commit${i >= MOBILE_COMMITS ? ' extra' : ''}">
+      <div class="crow" onclick="this.parentElement.classList.toggle('open')" title="${h(c.short)}: ${h(c.subject)}">
+        <span class="cnode"></span>
+        <div class="ctext">
+          <div class="cmain"><span class="chash">${h(c.short)}:</span> ${h(c.subject)}</div>
+          <div class="cdate">${h(c.relDate)}</div>
+        </div>
+      </div>
+      <div class="cdetail">${msg}<div class="cfiles">${files || '<span class="empty">No file changes.</span>'}</div></div>
+    </div>`;
+  }).join('') + (r.commits.length > MOBILE_COMMITS
+    ? `<button class="cmore" onclick="this.closest('.commits').classList.add('expanded')">Show all ${r.commits.length} commits</button>` : '');
+}
+// --- notes: formatted read view, tap to edit ---------------------------------
+// Deliberately minimal: bullets, **bold**, `code`, bare URLs, and #NN job
+// cross-links. Input stays plain text in jobs.json.
+function fmtNotes(note, id) {
+  if (!note || !note.trim()) {
+    return `<div class="dnotes-view empty-note" onclick="notesEdit('${h(id)}')">Add a blurb — what is this job, what's blocking it, next steps… (tap to edit)</div>`;
+  }
+  const inline = s => s
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/https?:\/\/[^\s<]*[^\s<.,);]/g, m =>
+      `<a href="${m}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${m}</a>`)
+    .replace(/(^|[\s(])#(\d+)\b/g, (m, pre, n) =>
+      jobs.some(x => x.num === Number(n))   // only real jobs get a link (#5835 might be a PR)
+        ? `${pre}<a class="jref" onclick="event.stopPropagation();openJobByNum(${n})">#${n}</a>`
+        : m);
+  const lines = h(note).split('\n');
+  let out = '', inList = false;
+  for (const ln of lines) {
+    const m = ln.match(/^\s*[-*]\s+(.*)/);
+    if (m) {
+      if (!inList) { out += '<ul>'; inList = true; }
+      out += `<li>${inline(m[1])}</li>`;
+    } else {
+      if (inList) { out += '</ul>'; inList = false; }
+      out += ln.trim() === '' ? '<div class="nsp"></div>' : `<div>${inline(ln)}</div>`;
+    }
+  }
+  if (inList) out += '</ul>';
+  return `<div class="dnotes-view" onclick="notesEdit('${h(id)}')" title="Tap to edit">${out}</div>`;
+}
+
+function togglePrRow() {
+  const row = document.getElementById('pr-row');
+  if (!row) return;
+  const open = row.classList.toggle('open');
+  if (open) {
+    const i = document.getElementById('job-pr');
+    if (i && !i.value) i.focus();
+  }
+}
+
+function openJobByNum(n) {
+  const j = jobs.find(x => x.num === n);
+  if (j) openJob(j.id);
+}
+
+function autosizeNotes(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = (ta.scrollHeight + 2) + 'px';   // CSS max-height caps it
+}
+
+function notesEdit(id) {
+  const wrap = document.getElementById('job-notes-wrap');
+  if (!wrap || document.getElementById('job-notes')) return;
+  const j = jobs.find(x => x.id === id);
+  wrap.innerHTML = `<textarea class="dnotes" id="job-notes" oninput="autosizeNotes(this)"
+    placeholder="Add a blurb — what is this job, what's blocking it, next steps…"></textarea>`;
+  const ta = document.getElementById('job-notes');
+  ta.value = (j && j.note) || '';
+  autosizeNotes(ta);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+async function saveNotes(id) {
+  const ta = document.getElementById('job-notes');
+  if (!ta) return;                       // view mode — nothing edited
+  await saveJob(id, { note: ta.value });
+  openJob(id);                           // re-render back to the read view
+}
+function addDoc(id) {
+  const path = prompt('Document path (relative to repo root, or absolute):');
+  if (!path) return;
+  const j = jobs.find(x => x.id === id);
+  const docs = Array.isArray(j.docs) ? [...j.docs] : [];
+  const name = path.split(/[\\/]/).pop();
+  docs.push({ name, path, type: docType(name) });
+  saveJob(id, { docs });
+}
+function removeDoc(id, index) {
+  const j = jobs.find(x => x.id === id);
+  const docs = Array.isArray(j.docs) ? [...j.docs] : [];
+  docs.splice(index, 1);
+  saveJob(id, { docs });
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); } });
+
+// =====================================================================
+// RESPONSIVE MODES:
+//   wide   — desktop: embedded board pane + rail sidebar.
+//   narrow — phone portrait / tall-narrow window: rail only, board via Expand.
+//   slab   — phone LANDSCAPE (short viewport): the board IS the app, rail
+//            hidden. Rotating the phone flips rail <-> board automatically.
+// ?m=1 forces narrow, ?land=1 forces slab (testing/screenshot hatches).
+// =====================================================================
+const NARROW_MQ = window.matchMedia('(max-width:760px), (max-aspect-ratio:3/4)');
+const SLAB_MQ = window.matchMedia('(max-height:520px)');
+const NARROW_FORCE = new URLSearchParams(location.search).has('m');
+const SLAB_FORCE = new URLSearchParams(location.search).has('land');
+const isMobile = () => document.body.classList.contains('narrow');
+function applyResponsiveMode() {
+  const slab = (SLAB_MQ.matches || SLAB_FORCE) && !NARROW_FORCE;
+  const narrow = !slab && (NARROW_MQ.matches || NARROW_FORCE);
+  document.body.classList.toggle('slab', slab);
+  document.body.classList.toggle('narrow', narrow);
+  // entering slab: the embedded pane is already the full-screen board — a still-open
+  // takeover from portrait would just double it, so drop it
+  if (slab && document.querySelector('.modal.board')) closeModal();
+  renderBoardPane();
+  applyRail();
+}
+NARROW_MQ.addEventListener('change', applyResponsiveMode);
+SLAB_MQ.addEventListener('change', applyResponsiveMode);
+
+function jobsEmptyTap() { if (!isMobile()) openKanban(); }
+
+applyResponsiveMode();
+
+// --- go --------------------------------------------------------------------
+init();
+</script>
+</body>
+</html>
