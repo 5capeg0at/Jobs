@@ -37,7 +37,10 @@ over the base, your values win. The pieces:
 - **`prCheck.intervalSec`** — how often the background PR-status sweep runs.
 - **`repos`** — the repos a job can be pinned to. A job stores the repo *key*; the sidecar
   resolves its path + trunk here to draw the detail card's commit graph and to run
-  `audit-done-jobs.ps1`. Edit these to point at your own repos.
+  `audit-done-jobs.ps1`. Edit these to point at your own repos. `POST /jobs` rejects a key
+  that isn't in the map and names the valid ones, so a typo surfaces at write time rather
+  than as an "unknown repo" graph later; `GET /config` returns the merged map if you'd
+  rather look first.
 
 ## Files
 

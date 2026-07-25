@@ -50,6 +50,68 @@ Describe 'Merge-JobUpsert (rich board, jobs.json)' {
     }
 }
 
+Describe 'Get-NextJobNum (monotonic job numbering)' {
+    It 'starts at 1 on an empty board' {
+        Get-NextJobNum ([pscustomobject]@{ jobs = @() }) | Should Be 1
+    }
+
+    It 'follows the highest num when no nextNum is stored' {
+        $data = [pscustomobject]@{ jobs = @(
+            [pscustomobject]@{ id='a'; num=100 },
+            [pscustomobject]@{ id='b'; num=101 }
+        ) }
+        Get-NextJobNum $data | Should Be 102
+    }
+
+    It 'ignores jobs that predate the num field' {
+        $data = [pscustomobject]@{ jobs = @(
+            [pscustomobject]@{ id='a' },
+            [pscustomobject]@{ id='b'; num=7 }
+        ) }
+        Get-NextJobNum $data | Should Be 8
+    }
+
+    It 'treats a stored nextNum as a floor, so a deleted top job never gets reissued' {
+        # #101 created then deleted: nextNum stayed at 102 while max(num) fell back to 100.
+        $data = [pscustomobject]@{ nextNum = 102; jobs = @([pscustomobject]@{ id='a'; num=100 }) }
+        Get-NextJobNum $data | Should Be 102
+    }
+
+    It 'wins over a stale nextNum that trails the board' {
+        $data = [pscustomobject]@{ nextNum = 5; jobs = @([pscustomobject]@{ id='a'; num=100 }) }
+        Get-NextJobNum $data | Should Be 101
+    }
+
+    It 'reads a num stored as a string' {
+        $data = [pscustomobject]@{ jobs = @([pscustomobject]@{ id='a'; num='99' }) }
+        Get-NextJobNum $data | Should Be 100
+    }
+}
+
+Describe 'Test-KnownRepo (repo key validation on upsert)' {
+    $repos = [pscustomobject]@{
+        'example-repo' = [pscustomobject]@{ path='C:\x'; trunk='main' }
+        'Jobs'         = [pscustomobject]@{ path='C:\y'; trunk='master' }
+    }
+
+    It 'accepts a key present in the repos map' {
+        Test-KnownRepo 'Jobs' $repos | Should Be $true
+    }
+
+    It 'rejects a key that is not' {
+        Test-KnownRepo 'Kupe' $repos | Should Be $false
+    }
+
+    It 'accepts an omitted repo — pinning one is optional' {
+        Test-KnownRepo ''   $repos | Should Be $true
+        Test-KnownRepo $null $repos | Should Be $true
+    }
+
+    It 'rejects any key when the config carries no repos map at all' {
+        Test-KnownRepo 'Jobs' $null | Should Be $false
+    }
+}
+
 # --- ADO pure-helper tests ------
 
 function NewWi { param([hashtable]$Fields); [pscustomobject]@{ fields = [pscustomobject]$Fields } }

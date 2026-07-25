@@ -134,6 +134,26 @@ function Repair-JobUpdatedAt {
     Save-Jobs $data
 }
 
+function Get-NextJobNum {
+    # Pure: the num to stamp on the next created job. Monotonic — the stored nextNum acts
+    # as a floor so deleting the highest job doesn't hand its number to the next create,
+    # which would silently repoint any "#N" cross-reference sitting in a note. Falls back
+    # to max+1 on a board written before the field existed, so it self-heals on first write.
+    param($Data)
+    $maxNum = ($Data.jobs | ForEach-Object {
+        $p = $_.PSObject.Properties['num']; if ($p -and $null -ne $p.Value) { [int]$p.Value } else { 0 }
+    } | Measure-Object -Maximum).Maximum
+    [Math]::Max([int](Get-Prop $Data 'nextNum' 0), [int]$maxNum + 1)
+}
+
+function Test-KnownRepo {
+    # Pure: is $Key present in the config's repos map? An empty key means "no repo pinned",
+    # which is legitimate, so it passes. No I/O, so it's testable without a config file.
+    param([string]$Key, $Repos)
+    if (-not $Key) { return $true }
+    [bool]($Repos -and $Repos.PSObject.Properties[$Key])
+}
+
 function Merge-JobUpsert {
     # Pure: computes the job to persist for a POST /jobs body. $Existing -> update (mutated
     # in place, field-by-field, an omitted field falling back to its current value); $null ->
@@ -174,6 +194,18 @@ function Handle-PostJob { param($Ctx)
     $job = Read-BodyJson $Ctx
     if (-not $job) { Send-Err $Ctx 'body required'; return }
 
+    # A repo key missing from config.repos costs nothing at write time and then renders as
+    # "unknown repo" in the commit graph much later, far from the typo. Reject it here and
+    # name the valid keys, so the error is self-correcting. Only checked when the body
+    # actually carries a repo — an update that omits it keeps whatever the job already had,
+    # which may legitimately name a repo this machine's config doesn't know.
+    $repoKey = Get-Prop $job 'repo'
+    $repos   = Get-Prop (Get-JobsConfig) 'repos' $null
+    if (-not (Test-KnownRepo $repoKey $repos)) {
+        $valid = (($repos.PSObject.Properties.Name | Sort-Object) -join ', ')
+        Send-Err $Ctx "unknown repo key '$repoKey' - valid keys: $valid"; return
+    }
+
     $data = Read-Jobs
     $jobs = [System.Collections.Generic.List[object]] @($data.jobs)
 
@@ -181,11 +213,12 @@ function Handle-PostJob { param($Ctx)
     $existing = $jobs | Where-Object { $_.id -eq $jobId } | Select-Object -First 1
     if (-not $existing -and -not (Get-Prop $job 'label')) { Send-Err $Ctx 'label required for new jobs'; return }
 
-    $maxNum = ($jobs | ForEach-Object {
-        $p = $_.PSObject.Properties['num']; if ($p -and $null -ne $p.Value) { [int]$p.Value } else { 0 }
-    } | Measure-Object -Maximum).Maximum
-    $upserted = Merge-JobUpsert -Job $job -Existing $existing -NextNum ($maxNum + 1)
-    if (-not $existing) { $jobs.Add($upserted) }
+    $next     = Get-NextJobNum $data
+    $upserted = Merge-JobUpsert -Job $job -Existing $existing -NextNum $next
+    if (-not $existing) {
+        $jobs.Add($upserted)
+        $data | Add-Member -NotePropertyName nextNum -NotePropertyValue ($next + 1) -Force
+    }
 
     $data.jobs = $jobs.ToArray()
     Save-Jobs $data
