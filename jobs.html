@@ -125,7 +125,7 @@ body.narrow #board-pane { display:none; }               /* wide-only: embedded b
    search/Brief/+ New job, so the rail's mode slider and Brief button only exist on
    narrow/slab where the rail is the whole app */
 body:not(.narrow):not(.slab) #rail .modebar,
-body:not(.narrow):not(.slab) #jobs-brief { display:none; }
+body:not(.narrow):not(.slab) #jobs-brief, body:not(.narrow):not(.slab) #jobs-almanac { display:none; }
 body.narrow #rail { width:auto; flex:1; }
 
 /* jobs rail */
@@ -596,6 +596,9 @@ body.slab.ado #rail { width:auto; flex:1; }
         <button class="hbtn" onclick="openBrief()" title="Open latest brief">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg>
           <span class="btxt">Brief</span></button>
+        <button class="hbtn almanac-btn hidden" onclick="openAlmanac()" title="Open today's Almanac">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <span class="btxt">Almanac</span></button>
         <button class="hbtn" onclick="openQuickAddSheet()">+ New job</button>
       </div>
       <div class="board-cols" id="board-cols-embed"></div>
@@ -609,6 +612,9 @@ body.slab.ado #rail { width:auto; flex:1; }
         <button class="hbtn" id="jobs-brief" onclick="openBrief()" title="Open latest brief">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg>
           <span class="btxt">Brief</span></button>
+        <button class="hbtn almanac-btn hidden" id="jobs-almanac" onclick="openAlmanac()" title="Open today's Almanac">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <span class="btxt">Almanac</span></button>
         <button class="jsearch-btn" id="jobs-search-btn" onclick="openJobsSearch()" title="Search jobs">
           <svg class="fico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         </button>
@@ -664,6 +670,7 @@ async function init() {
       `<div class="empty">Could not reach sidecar — is jobs-sidecar.ps1 running?</div>`;
     cfg = {};
   }
+  applyAlmanacVisibility();
   loadJobs();
   initJobsMode();
   setInterval(pollJobs, 5000);
@@ -742,6 +749,23 @@ async function loadJobs() {
 
 function openBrief() {
   window.open('/briefs/latest.html', 'jobs-brief');
+}
+
+// The Almanac is Gerhard's personal morning read, not part of the board. This repo is
+// meant to be shareable, so the button is off unless a machine opts in via
+// `almanac.enabled` in the gitignored jobs.config.local.json — the committed config
+// ships it false, and a clone gets a board with no trace of it.
+function almanacEnabled() {
+  return !!(cfg && cfg.almanac && cfg.almanac.enabled);
+}
+
+function openAlmanac() {
+  window.open('/almanac/latest.html', 'jobs-almanac');
+}
+
+function applyAlmanacVisibility() {
+  if (!almanacEnabled()) return;
+  document.querySelectorAll('.almanac-btn').forEach(b => b.classList.remove('hidden'));
 }
 
 function jobsInteracting() {
@@ -1186,6 +1210,9 @@ function openKanban() {
           <button class="hbtn" onclick="openBrief()" title="Open latest brief">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg>
             <span class="btxt">Brief</span></button>
+          ${almanacEnabled() ? `<button class="hbtn almanac-btn" onclick="openAlmanac()" title="Open today's Almanac">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            <span class="btxt">Almanac</span></button>` : ''}
           <button class="mplus" onclick="openQuickAddSheet()" title="New job">+</button>
           <button class="mclose" onclick="closeModal()">×</button>
         </div>
