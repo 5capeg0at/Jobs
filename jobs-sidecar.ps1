@@ -18,8 +18,11 @@
     GET  /poll/{script}            -> read {script}.latest.json (phase, pct, done, status) —
                                        a generic status-file reader
     GET  /briefs/{path}            -> static files from ~/.claude/scheduled-prompts/briefs/
-                                       (morning briefs + screenshot PNGs); /briefs/latest.html
+                                       (factory briefs + screenshot PNGs); /briefs/latest.html
                                        always resolves to the newest *-morning-brief.html
+    GET  /almanac/{path}           -> static files from ~/.claude/almanac/ (the morning
+                                       read); /almanac/latest.html always resolves to the
+                                       newest *-almanac.html
 
   A background PR-status sweep also runs invisibly off the main request loop (no route, no
   button): on the configured cadence (prCheck.intervalSec), it checks each PR-status job's
@@ -46,6 +49,10 @@ $LocalConfigPath = Join-Path $ScriptRoot 'jobs.config.local.json'
 $JobsPath     = Join-Path $ScriptRoot 'jobs.json'          # rich board data store
 $HtmlPath     = Join-Path $ScriptRoot 'jobs.html'
 $BriefsDir    = Join-Path $env:USERPROFILE '.claude\scheduled-prompts\briefs'
+# The Almanac pages live outside the Almanac repo on purpose: they are per-day
+# artefacts carrying personal content, and the repo is machinery. Same split as
+# birth data in the Astrology repo.
+$AlmanacDir   = Join-Path $env:USERPROFILE '.claude\almanac'
 
 # --- shared helpers ------------------------------------------------------------
 
@@ -372,34 +379,46 @@ function Handle-OpenDoc { param($Ctx)
     Send-Json $Ctx @{opened = $true; path = $p}
 }
 
-# --- briefs static route -------------------------------------------------------
-# Serves ~/.claude/scheduled-prompts/briefs/ (morning-brief HTML + PNG screenshots) at
-# /briefs/, over the same localhost + Tailscale route as everything else.
+# --- dated-artefact static routes ------------------------------------------------
+# Serves folders of dated HTML pages (plus their images) over the same localhost +
+# Tailscale route as everything else, each with a `latest.html` that always resolves to
+# the newest page so nothing has to be edited per run. Two consumers today:
+#   /briefs/   -> ~/.claude/scheduled-prompts/briefs/  (the factory brief + screenshots)
+#   /almanac/  -> ~/.claude/almanac/                   (the morning read)
 # Path-traversal guarded since this port can be Tailscale-exposed.
+#
+# One resolver, parametrised by the newest-file glob, rather than a copy per consumer:
+# the traversal guard below is the security boundary for anything served here, and a
+# second copy of it is a second thing to get right.
 
-function Get-LatestBriefFile {
-    param([string]$BriefsDir)
-    if (-not (Test-Path -LiteralPath $BriefsDir)) { return $null }
-    Get-ChildItem -LiteralPath $BriefsDir -Filter '*-morning-brief.html' -File -ErrorAction SilentlyContinue |
-        Sort-Object Name -Descending | Select-Object -First 1
+# Takes a list of globs, not one, so a renamed artefact doesn't orphan its history:
+# the factory brief used to be written as *-morning-brief.html and every existing one
+# still is. Matching both keeps latest.html resolving across the rename.
+function Get-LatestFile {
+    param([string]$Dir, [string[]]$Patterns)
+    if (-not (Test-Path -LiteralPath $Dir)) { return $null }
+    $found = foreach ($pattern in $Patterns) {
+        Get-ChildItem -LiteralPath $Dir -Filter $pattern -File -ErrorAction SilentlyContinue
+    }
+    $found | Sort-Object Name -Descending | Select-Object -First 1
 }
 
-# Maps a requested /briefs/<subpath> onto a real file under $BriefsDir, or returns $null if
-# it doesn't resolve to one (missing file, empty briefs dir, or an escape attempt like
-# '../jobs.config.local.json' trying to resolve outside the briefs folder).
-function Resolve-BriefFile {
-    param([string]$BriefsDir, [string]$RequestedPath)
+# Maps a requested <subpath> onto a real file under $Root, or returns $null if it
+# doesn't resolve to one (missing file, empty folder, or an escape attempt like
+# '../jobs.config.local.json' trying to resolve outside the served folder).
+function Resolve-StaticFile {
+    param([string]$Root, [string]$RequestedPath, [string[]]$LatestPattern)
 
     if ([string]::IsNullOrWhiteSpace($RequestedPath) -or $RequestedPath -eq 'latest.html') {
-        $latest = Get-LatestBriefFile -BriefsDir $BriefsDir
+        $latest = Get-LatestFile -Dir $Root -Patterns $LatestPattern
         return $(if ($latest) { $latest.FullName } else { $null })
     }
 
     $decoded = [System.Uri]::UnescapeDataString($RequestedPath)
     if ($decoded -match '\.\.') { return $null }  # reject outright; belt-and-braces on top of the resolve check below
 
-    $base = [System.IO.Path]::GetFullPath($BriefsDir).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
-    $full = [System.IO.Path]::GetFullPath((Join-Path $BriefsDir $decoded))
+    $base = [System.IO.Path]::GetFullPath($Root).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+    $full = [System.IO.Path]::GetFullPath((Join-Path $Root $decoded))
     if ($full -ne $base -and -not $full.StartsWith($base + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
         return $null
     }
@@ -407,22 +426,33 @@ function Resolve-BriefFile {
     return $full
 }
 
-function Get-BriefContentType {
+function Get-StaticContentType {
     param([string]$Path)
     switch ([System.IO.Path]::GetExtension($Path).ToLowerInvariant()) {
         '.html' { 'text/html; charset=utf-8' }
         '.png'  { 'image/png' }
         '.jpg'  { 'image/jpeg' }
         '.jpeg' { 'image/jpeg' }
+        '.svg'  { 'image/svg+xml' }
         default { 'application/octet-stream' }
     }
 }
 
+function Handle-GetStatic {
+    param($Ctx, [string]$RequestedPath, [string]$Root, [string[]]$LatestPattern, [string]$Label)
+    $file = Resolve-StaticFile -Root $Root -RequestedPath $RequestedPath -LatestPattern $LatestPattern
+    if (-not $file) { Send-Err $Ctx "$Label not found: $RequestedPath" 404; return }
+    Send-File $Ctx $file (Get-StaticContentType $file)
+}
+
 function Handle-GetBrief {
     param($Ctx, [string]$RequestedPath, [string]$BriefsDir)
-    $file = Resolve-BriefFile -BriefsDir $BriefsDir -RequestedPath $RequestedPath
-    if (-not $file) { Send-Err $Ctx "brief not found: $RequestedPath" 404; return }
-    Send-File $Ctx $file (Get-BriefContentType $file)
+    Handle-GetStatic $Ctx $RequestedPath $BriefsDir @('*-factory-brief.html', '*-morning-brief.html') 'brief'
+}
+
+function Handle-GetAlmanac {
+    param($Ctx, [string]$RequestedPath, [string]$AlmanacDir)
+    Handle-GetStatic $Ctx $RequestedPath $AlmanacDir @('*-almanac.html') 'almanac'
 }
 
 # --- ADO assigned rail -------------------------------------------------------
@@ -794,6 +824,7 @@ try {
                 '^/git/log$'              { Handle-GitLog $ctx; break }
                 '^/open$'                 { if ($method -eq 'POST') { Handle-OpenDoc $ctx }; break }
                 '^/briefs/?(.*)$'         { if ($method -eq 'GET') { Handle-GetBrief $ctx $Matches[1] $BriefsDir }; break }
+                '^/almanac/?(.*)$'        { if ($method -eq 'GET') { Handle-GetAlmanac $ctx $Matches[1] $AlmanacDir }; break }
                 '^/poll/([^/]+)$'        { $ctx | Out-Null; $latest = Read-LatestJson $Matches[1]; if ($latest) { Send-Json $ctx $latest } else { Send-Json $ctx @{done=$false; status=$null; phase='not-started'; script=$Matches[1]} }; break }
                 default                   { Send-Err $ctx "not found: $path" 404 }
             }

@@ -204,7 +204,7 @@ Describe 'ConvertTo-AdoStories' {
     }
 }
 
-Describe 'Resolve-BriefFile (briefs static route)' {
+Describe 'Resolve-StaticFile (briefs static route)' {
     $briefsDir = Join-Path $TestDrive 'briefs'
     New-Item -ItemType Directory -Path $briefsDir -Force | Out-Null
     Set-Content -Path (Join-Path $briefsDir '2026-07-10-morning-brief.html') -Value '<html>old</html>'
@@ -212,33 +212,93 @@ Describe 'Resolve-BriefFile (briefs static route)' {
     Set-Content -Path (Join-Path $briefsDir 'shot.png') -Value 'not-really-png'
 
     It 'serves a named brief file from the briefs dir' {
-        $f = Resolve-BriefFile -BriefsDir $briefsDir -RequestedPath 'shot.png'
+        $f = Resolve-StaticFile -Root $briefsDir -RequestedPath 'shot.png' -LatestPattern '*-morning-brief.html'
         $f | Should Be (Join-Path $briefsDir 'shot.png')
     }
 
     It 'latest.html resolves to the newest *-morning-brief.html' {
-        $f = Resolve-BriefFile -BriefsDir $briefsDir -RequestedPath 'latest.html'
+        $f = Resolve-StaticFile -Root $briefsDir -RequestedPath 'latest.html' -LatestPattern '*-morning-brief.html'
         $f | Should Be (Join-Path $briefsDir '2026-07-12-morning-brief.html')
     }
 
     It 'empty request path also resolves to the latest brief' {
-        $f = Resolve-BriefFile -BriefsDir $briefsDir -RequestedPath ''
+        $f = Resolve-StaticFile -Root $briefsDir -RequestedPath '' -LatestPattern '*-morning-brief.html'
         $f | Should Be (Join-Path $briefsDir '2026-07-12-morning-brief.html')
     }
 
     It 'rejects a traversal attempt escaping the briefs dir' {
-        $f = Resolve-BriefFile -BriefsDir $briefsDir -RequestedPath '..%2fjobs.json'
+        $f = Resolve-StaticFile -Root $briefsDir -RequestedPath '..%2fjobs.json' -LatestPattern '*-morning-brief.html'
         $f | Should Be $null
     }
 
     It 'returns null for a missing file' {
-        $f = Resolve-BriefFile -BriefsDir $briefsDir -RequestedPath 'nope.html'
+        $f = Resolve-StaticFile -Root $briefsDir -RequestedPath 'nope.html' -LatestPattern '*-morning-brief.html'
+        $f | Should Be $null
+    }
+
+    It 'returns null when the folder does not exist at all' {
+        $f = Resolve-StaticFile -Root (Join-Path $TestDrive 'nothing-here') -RequestedPath 'latest.html' -LatestPattern '*-morning-brief.html'
         $f | Should Be $null
     }
 }
 
-Describe 'Get-BriefContentType' {
-    It 'maps .html to text/html' { Get-BriefContentType 'x.html' | Should Be 'text/html; charset=utf-8' }
-    It 'maps .png to image/png' { Get-BriefContentType 'x.png' | Should Be 'image/png' }
-    It 'falls back to octet-stream for unknown extensions' { Get-BriefContentType 'x.bin' | Should Be 'application/octet-stream' }
+Describe 'Resolve-StaticFile across the factory-brief rename' {
+    # The brief was renamed from "morning brief" to "factory brief" (the morning read
+    # is the Almanac now). Every brief written before the rename is still on disk under
+    # the old name, so latest.html has to keep seeing both - otherwise the rename
+    # silently orphans the whole archive and the route 404s until the next run.
+    $dir = Join-Path $TestDrive 'renamed'
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $patterns = @('*-factory-brief.html', '*-morning-brief.html')
+
+    It 'still finds an old brief when no new-style one exists yet' {
+        Set-Content -Path (Join-Path $dir '2026-07-20-morning-brief.html') -Value '<html>old</html>'
+        $f = Resolve-StaticFile -Root $dir -RequestedPath 'latest.html' -LatestPattern $patterns
+        $f | Should Be (Join-Path $dir '2026-07-20-morning-brief.html')
+    }
+
+    It 'prefers the newer file regardless of which naming it uses' {
+        Set-Content -Path (Join-Path $dir '2026-07-25-factory-brief.html') -Value '<html>new</html>'
+        $f = Resolve-StaticFile -Root $dir -RequestedPath 'latest.html' -LatestPattern $patterns
+        $f | Should Be (Join-Path $dir '2026-07-25-factory-brief.html')
+    }
+
+    It 'an older new-style file does not beat a newer old-style one' {
+        Set-Content -Path (Join-Path $dir '2026-07-28-morning-brief.html') -Value '<html>newest</html>'
+        $f = Resolve-StaticFile -Root $dir -RequestedPath 'latest.html' -LatestPattern $patterns
+        $f | Should Be (Join-Path $dir '2026-07-28-morning-brief.html')
+    }
+}
+
+Describe 'Resolve-StaticFile (almanac static route)' {
+    # The two routes share one resolver, so what is worth testing separately is that
+    # the newest-file pattern really is per-route: an almanac request must not fall
+    # through to a brief sitting in its own folder, and vice versa.
+    $almanacDir = Join-Path $TestDrive 'almanac'
+    New-Item -ItemType Directory -Path $almanacDir -Force | Out-Null
+    Set-Content -Path (Join-Path $almanacDir '2026-07-26-almanac.html') -Value '<html>yesterday</html>'
+    Set-Content -Path (Join-Path $almanacDir '2026-07-27-almanac.html') -Value '<html>today</html>'
+    Set-Content -Path (Join-Path $almanacDir '2026-07-28-morning-brief.html') -Value '<html>not mine</html>'
+
+    It 'latest.html resolves to the newest *-almanac.html' {
+        $f = Resolve-StaticFile -Root $almanacDir -RequestedPath 'latest.html' -LatestPattern '*-almanac.html'
+        $f | Should Be (Join-Path $almanacDir '2026-07-27-almanac.html')
+    }
+
+    It 'ignores a newer file that is not an almanac' {
+        $f = Resolve-StaticFile -Root $almanacDir -RequestedPath 'latest.html' -LatestPattern '*-almanac.html'
+        $f | Should Not Be (Join-Path $almanacDir '2026-07-28-morning-brief.html')
+    }
+
+    It 'rejects a traversal attempt escaping the almanac dir' {
+        $f = Resolve-StaticFile -Root $almanacDir -RequestedPath '..%2fjobs.json' -LatestPattern '*-almanac.html'
+        $f | Should Be $null
+    }
+}
+
+Describe 'Get-StaticContentType' {
+    It 'maps .html to text/html' { Get-StaticContentType 'x.html' | Should Be 'text/html; charset=utf-8' }
+    It 'maps .png to image/png' { Get-StaticContentType 'x.png' | Should Be 'image/png' }
+    It 'maps .svg to image/svg+xml' { Get-StaticContentType 'x.svg' | Should Be 'image/svg+xml' }
+    It 'falls back to octet-stream for unknown extensions' { Get-StaticContentType 'x.bin' | Should Be 'application/octet-stream' }
 }
