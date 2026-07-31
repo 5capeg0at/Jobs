@@ -17,8 +17,6 @@
   "_almanacComment": "Opt-in button linking to a personal daily read served at /almanac/latest.html. Off here deliberately: this repo is meant to be shareable and the Almanac is a private thing, so a clone gets a board with no trace of it. Turn it on per-machine in the gitignored jobs.config.local.json.",
   "almanac": { "enabled": false },
 
-  "_reposComment": "Repos a job can be pinned to. Jobs store the repo KEY; the sidecar resolves path + trunk here for the git-graph endpoints (also read by audit-done-jobs.ps1). trunk = the branch to diff a feature branch against (merge-base..branch). Edit these to point at your own repos.",
-  "repos": {
-    "example-repo": { "path": "C:\\path\\to\\your\\repo", "trunk": "main" }
-  }
+  "_reposComment": "Repos a job can be pinned to. Jobs store the repo KEY; the sidecar resolves path + trunk here for the git-graph endpoints (also read by audit-done-jobs.ps1). trunk = the branch to diff a feature branch against (merge-base..branch). Empty by default: register yours from the repo dropdown's '+ Add repo' (it writes to the gitignored jobs.config.local.json), or hand-edit that file using jobs.config.local.example.json as the shape.",
+  "repos": {}
 }

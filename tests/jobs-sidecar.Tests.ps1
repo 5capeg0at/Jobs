@@ -112,6 +112,39 @@ Describe 'Test-KnownRepo (repo key validation on upsert)' {
     }
 }
 
+Describe 'Merge-RepoUpsert (local config, jobs.config.local.json)' {
+    It 'seeds a repos map when the local config does not exist yet' {
+        $c = Merge-RepoUpsert -LocalConfig $null -Key 'Kupe' -Path 'C:\Repos\Kupe' -Trunk 'master'
+        $c.repos.Kupe.path  | Should Be 'C:\Repos\Kupe'
+        $c.repos.Kupe.trunk | Should Be 'master'
+        $c._comment | Should Not BeNullOrEmpty
+    }
+
+    It 'adds a repo alongside the existing ones' {
+        $local = '{"repos":{"Bridge":{"path":"C:\\Repos\\Bridge","trunk":"master"}}}' | ConvertFrom-Json
+        $c = Merge-RepoUpsert -LocalConfig $local -Key 'Kupe' -Path 'C:\Repos\Kupe' -Trunk 'main'
+        $c.repos.Bridge.path | Should Be 'C:\Repos\Bridge'
+        $c.repos.Kupe.trunk  | Should Be 'main'
+    }
+
+    It 'overwrites a repo registered under the same key' {
+        $local = '{"repos":{"Kupe":{"path":"D:\\old","trunk":"main"}}}' | ConvertFrom-Json
+        $c = Merge-RepoUpsert -LocalConfig $local -Key 'Kupe' -Path 'C:\Repos\Kupe' -Trunk 'master'
+        @($c.repos.PSObject.Properties).Count | Should Be 1
+        $c.repos.Kupe.path  | Should Be 'C:\Repos\Kupe'
+        $c.repos.Kupe.trunk | Should Be 'master'
+    }
+
+    It 'carries unrelated keys through untouched' {
+        $local = '{"_comment":"mine","ado":{"org":"https://dev.azure.com/acme"},"port":7800}' | ConvertFrom-Json
+        $c = Merge-RepoUpsert -LocalConfig $local -Key 'Kupe' -Path 'C:\Repos\Kupe' -Trunk 'master'
+        $c._comment | Should Be 'mine'
+        $c.ado.org  | Should Be 'https://dev.azure.com/acme'
+        $c.port     | Should Be 7800
+        $c.repos.Kupe.path | Should Be 'C:\Repos\Kupe'
+    }
+}
+
 # --- ADO pure-helper tests ------
 
 function NewWi { param([hashtable]$Fields); [pscustomobject]@{ fields = [pscustomobject]$Fields } }

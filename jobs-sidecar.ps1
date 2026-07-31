@@ -6,6 +6,8 @@
     GET  /                         -> jobs.html (rail + kanban + detail + ADO Assigned mode)
     GET  /health                   -> {ok:true}
     GET  /config                   -> jobs.config.json (+ local override merge)
+    POST /config/repos             -> register a repo ({key,path,trunk?}) in the gitignored
+                                       jobs.config.local.json
     GET  /jobs                     -> read jobs.json (the rich board)
     POST /jobs                     -> upsert a job ({label,branch?,repo?,status?,note?,docs?,pr?,id?})
     DELETE /jobs/{id}               -> delete a job
@@ -244,6 +246,46 @@ function Handle-DeleteJob { param($Ctx, [string]$Id)
 function Handle-GetConfig { param($Ctx)
     $cfg = Get-JobsConfig
     Send-Json $Ctx $cfg
+}
+
+function Handle-PostConfigRepo { param($Ctx)
+    # Register a repo from the UI's "+ Add repo" affordance. Writes to the GITIGNORED
+    # jobs.config.local.json only — the committed config ships no repos, so a fresh clone
+    # wires up its own without a code or tracked-file change.
+    $body = Read-BodyJson $Ctx
+    if (-not $body) { Send-Err $Ctx 'body required'; return }
+
+    $key   = ([string](Get-Prop $body 'key')).Trim()
+    $path  = ([string](Get-Prop $body 'path')).Trim()
+    $trunk = ([string](Get-Prop $body 'trunk')).Trim()
+    if (-not $trunk) { $trunk = 'master' }
+
+    if (-not $key)  { Send-Err $Ctx 'key required'; return }
+    if (-not $path) { Send-Err $Ctx 'path required'; return }
+    # The key becomes a JSON property and travels in query strings (/git/log?repo=KEY), so
+    # keep it to characters that survive both without escaping.
+    if ($key -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+        Send-Err $Ctx 'key must start alphanumeric and contain only letters, digits, dot, dash or underscore'
+        return
+    }
+    if (-not (Test-Path -LiteralPath $path -PathType Container)) { Send-Err $Ctx "path not found: $path"; return }
+    # A path that isn't a work tree would register fine and then draw an empty commit graph
+    # for ever, with nothing to point at. Rejecting it here is the only honest moment.
+    if (-not (Invoke-Git $path @('rev-parse','--is-inside-work-tree')).ok) {
+        Send-Err $Ctx "not a git repository: $path"
+        return
+    }
+
+    $local = $null
+    if (Test-Path $LocalConfigPath) {
+        try { $local = Get-Content $LocalConfigPath -Raw | ConvertFrom-Json }
+        catch { Send-Err $Ctx 'jobs.config.local.json is not valid JSON — fix it by hand before adding a repo' 409; return }
+    }
+
+    $updated = Merge-RepoUpsert -LocalConfig $local -Key $key -Path $path -Trunk $trunk
+    $updated | ConvertTo-Json -Depth 10 | Set-Content $LocalConfigPath -Encoding utf8
+
+    Send-Json $Ctx @{ key = $key; path = $path; trunk = $trunk; repos = (Get-JobsConfig).repos }
 }
 
 # --- git graph -------------------------------------------------------------------
@@ -809,6 +851,7 @@ try {
                 '^/apple-touch-icon\.png$' { Send-File $ctx (Join-Path $ScriptRoot 'apple-touch-icon.png') 'image/png'; break }
                 '^/health$'               { Send-Json $ctx @{ok=$true}; break }
                 '^/config$'               { Handle-GetConfig $ctx; break }
+                '^/config/repos$'         { if ($method -eq 'POST') { Handle-PostConfigRepo $ctx }; break }
                 '^/ado/assigned$'         { if ($method -eq 'GET') { Handle-GetAdoAssigned $ctx }; break }
                 '^/jobs$' {
                     if ($method -eq 'GET')  { Handle-GetJobs $ctx }

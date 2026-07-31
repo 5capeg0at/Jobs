@@ -33,6 +33,34 @@ function Merge-Config {
     [pscustomobject]$merged
 }
 
+function Merge-RepoUpsert {
+    # Pure: returns the local-config object to persist after registering one repo under
+    # repos.<Key>. $LocalConfig is the parsed jobs.config.local.json, or $null when the
+    # file doesn't exist yet (a fresh clone) — in which case we seed the same shell the
+    # example file documents, so a hand-editor opening it later finds what they expect.
+    # Every other key is carried through untouched: this file is hand-edited too, and the
+    # UI writing one repo must not drop somebody's ado block.
+    param($LocalConfig, [string]$Key, [string]$Path, [string]$Trunk)
+
+    $seedComment = 'Personal, per-machine config. Gitignored. Deep-merges over jobs.config.json (objects merge key-by-key, your values win).'
+    if ($null -eq $LocalConfig) {
+        $LocalConfig = [pscustomobject][ordered]@{ _comment = $seedComment }
+    }
+
+    $out = [ordered]@{}
+    foreach ($p in $LocalConfig.PSObject.Properties) { $out[$p.Name] = $p.Value }
+
+    $repos = [ordered]@{}
+    $existing = $LocalConfig.PSObject.Properties['repos']
+    if ($existing -and $existing.Value -is [System.Management.Automation.PSCustomObject]) {
+        foreach ($p in $existing.Value.PSObject.Properties) { $repos[$p.Name] = $p.Value }
+    }
+    $repos[$Key] = [pscustomobject][ordered]@{ path = $Path; trunk = $Trunk }
+
+    $out['repos'] = [pscustomobject]$repos
+    [pscustomobject]$out
+}
+
 function Get-JobsConfig {
     # Base is required; a parse failure here stays fatal, as it was before layering.
     $base = Get-Content $ConfigPath -Raw | ConvertFrom-Json

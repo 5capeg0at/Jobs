@@ -662,6 +662,7 @@ function toggleTheme() {
 
 const API = '';
 let cfg = null;
+const ADD_REPO = '__add-repo__';   // sentinel value of the repo dropdown's "+ Add repo…" option
 
 async function init() {
   try { cfg = await fetchJSON('/config'); }
@@ -936,6 +937,61 @@ function submitQuickAdd() {
   if (!t) { document.getElementById('qs-title').focus(); return; }
   addJob(t, '', '');
 }
+
+// Register a repo without leaving the app: reached from the "+ Add repo…" option at the
+// bottom of the detail card's repo dropdown, and lands in the gitignored local config. The
+// job whose dropdown you opened is reopened either way, so cancelling costs you nothing.
+function openAddRepoSheet(jobId) {
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-bg" onclick="openJob('${h(jobId)}')">
+      <div class="modal detail m-add" onclick="event.stopPropagation()">
+        <div class="mhead"><span class="mico">✓</span><h2>Add repo</h2>
+          <button class="mclose" onclick="openJob('${h(jobId)}')">×</button></div>
+        <div class="detail-body">
+          <div class="dsec"><h4>Key</h4>
+            <input class="m-fld" id="ar-key" placeholder="Short name jobs pin to, e.g. Kupe" autocomplete="off"
+              onkeydown="if(event.key==='Enter')submitAddRepo('${h(jobId)}')"></div>
+          <div class="dsec"><h4>Path</h4>
+            <input class="m-fld mono" id="ar-path" placeholder="C:\\Repos\\YourRepo" autocomplete="off"
+              onkeydown="if(event.key==='Enter')submitAddRepo('${h(jobId)}')"></div>
+          <div class="dsec"><h4>Trunk</h4>
+            <input class="m-fld mono" id="ar-trunk" placeholder="master" autocomplete="off"
+              onkeydown="if(event.key==='Enter')submitAddRepo('${h(jobId)}')"></div>
+          <div class="empty" id="ar-msg">Saved to jobs.config.local.json — never committed.</div>
+        </div>
+        <div class="dollar">
+          <button class="dbtn" onclick="openJob('${h(jobId)}')">Cancel</button>
+          <button class="dbtn prime" id="ar-submit" onclick="submitAddRepo('${h(jobId)}')">Add repo</button>
+        </div>
+      </div>
+    </div>`;
+  setTimeout(() => document.getElementById('ar-key')?.focus(), 60);
+}
+
+async function submitAddRepo(jobId) {
+  const msg = document.getElementById('ar-msg');
+  const key = document.getElementById('ar-key').value.trim();
+  const path = document.getElementById('ar-path').value.trim();
+  const trunk = document.getElementById('ar-trunk').value.trim();
+  if (!key)  { msg.textContent = 'Give the repo a key.'; document.getElementById('ar-key').focus(); return; }
+  if (!path) { msg.textContent = 'Give the repo a path.'; document.getElementById('ar-path').focus(); return; }
+
+  const btn = document.getElementById('ar-submit');
+  btn.disabled = true;
+  msg.textContent = 'Adding…';
+  let r;
+  try {
+    r = await fetchJSON('/config/repos', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ key, path, trunk }) });
+  } catch {
+    btn.disabled = false; msg.textContent = 'Could not reach the sidecar.'; return;
+  }
+  if (!r || r.error) { btn.disabled = false; msg.textContent = r && r.error ? r.error : 'Could not add the repo.'; return; }
+
+  cfg = await fetchJSON('/config');
+  await saveJob(jobId, { repo: key });   // you opened the dropdown to pin a repo; pin the new one
+  openJob(jobId);
+}
 function onJobsSearchInput(e) {
   jobsQuery = e.target.value;
   applySearch(e.target);
@@ -1135,6 +1191,7 @@ async function saveJob(id, updates) {
 }
 async function setJobStatus(id, status) { await saveJob(id, { status }); }
 async function setJobRepo(id, repo) {
+  if (repo === ADD_REPO) { openAddRepoSheet(id); return; }
   await saveJob(id, { repo });
   loadBranchOptions('job-repo', 'job-branch-list');
   const j = jobs.find(x => x.id === id);
@@ -1311,6 +1368,7 @@ function openJob(id, opts) {
               <select class="dsel" id="job-repo" onchange="setJobRepo('${h(j.id)}', this.value)">
                 <option value="">— none —</option>
                 ${Object.keys(cfg.repos||{}).map(k => `<option${k===j.repo?' selected':''}>${h(k)}</option>`).join('')}
+                <option value="${ADD_REPO}">+ Add repo…</option>
               </select>
             </label>
             <label class="dfield fwide">

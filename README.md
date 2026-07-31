@@ -37,16 +37,18 @@ over the base, your values win. The pieces:
 - **`prCheck.intervalSec`** — how often the background PR-status sweep runs.
 - **`repos`** — the repos a job can be pinned to. A job stores the repo *key*; the sidecar
   resolves its path + trunk here to draw the detail card's commit graph and to run
-  `audit-done-jobs.ps1`. Edit these to point at your own repos. `POST /jobs` rejects a key
-  that isn't in the map and names the valid ones, so a typo surfaces at write time rather
-  than as an "unknown repo" graph later; `GET /config` returns the merged map if you'd
-  rather look first.
+  `audit-done-jobs.ps1`. The base config ships none: register yours from the detail card's
+  repo dropdown (**+ Add repo** at the bottom — key, path, trunk), which writes them to
+  `jobs.config.local.json`, or hand-edit that file if you'd rather. `POST /jobs` rejects a
+  key that isn't in the map and names the valid ones, so a typo surfaces at write time
+  rather than as an "unknown repo" graph later; `GET /config` returns the merged map if
+  you'd rather look first.
 
 ## Files
 
 - `jobs-sidecar.ps1` — the server: an `HttpListener` that serves `jobs.html` and the API
   (`/jobs` CRUD, `/ado/assigned`, `/git/branch(es)`/`/git/log` for the commit graph,
-  `/config`, `/open`, `/poll/{script}`, `/briefs/{path}`). A background PR-status sweep runs
+  `/config` + `/config/repos` to register one, `/open`, `/poll/{script}`, `/briefs/{path}`). A background PR-status sweep runs
   off the main request loop on `prCheck.intervalSec`.
 - `jobs.html` — the whole UI in one file: a narrow-viewport rail, a wide-viewport kanban
   board, a detail card with a commit graph, search, and the ADO Assigned mode.
