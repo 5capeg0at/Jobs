@@ -21,7 +21,8 @@
                                        a generic status-file reader
     GET  /briefs/{path}            -> static files from ~/.claude/scheduled-prompts/briefs/
                                        (factory briefs + screenshot PNGs); /briefs/latest.html
-                                       always resolves to the newest *-morning-brief.html
+                                       always resolves to the newest *-factory-brief.html,
+                                       or *-morning-brief.html for ones written pre-rename
     GET  /almanac/{path}           -> static files from ~/.claude/almanac/ (the morning
                                        read); /almanac/latest.html always resolves to the
                                        newest *-almanac.html
