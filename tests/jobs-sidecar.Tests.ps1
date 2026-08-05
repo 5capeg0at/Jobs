@@ -48,6 +48,33 @@ Describe 'Merge-JobUpsert (rich board, jobs.json)' {
         $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
         $j.pr | Should Be 'https://dev.azure.com/your-org/YourProject/_git/example-repo/pullrequest/3'
     }
+
+    It 'stamps discoveredFrom on create' {
+        $body = [pscustomobject]@{ label = 'spawned job'; discoveredFrom = 'b9c0d1e2' }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        $j.discoveredFrom | Should Be 'b9c0d1e2'
+    }
+
+    It 'leaves discoveredFrom empty on create when omitted, marking a root job' {
+        $body = [pscustomobject]@{ label = 'new job' }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        $j.discoveredFrom | Should Be ''
+    }
+
+    It 'preserves an existing discoveredFrom when the update body omits it' {
+        $existing = [pscustomobject]@{ id='x'; label='j'; branch='b'; repo='example-repo'; pr=''; discoveredFrom='b9c0d1e2'; status='Planned'; note=''; docs=@() }
+        $body = [pscustomobject]@{ id = 'x'; status = 'Done' }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        $j.discoveredFrom | Should Be 'b9c0d1e2'
+        $j.status | Should Be 'Done'
+    }
+
+    It 'sets discoveredFrom on an existing job predating the field' {
+        $existing = [pscustomobject]@{ id='z'; label='j'; branch='b'; repo='example-repo'; status='Planned'; note=''; docs=@() }   # no discoveredFrom property at all
+        $body = [pscustomobject]@{ id = 'z'; discoveredFrom = 'f1a2b3c4' }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        $j.discoveredFrom | Should Be 'f1a2b3c4'
+    }
 }
 
 Describe 'Get-NextJobNum (monotonic job numbering)' {

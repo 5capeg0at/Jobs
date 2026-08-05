@@ -9,7 +9,7 @@
     POST /config/repos             -> register a repo ({key,path,trunk?}) in the gitignored
                                        jobs.config.local.json
     GET  /jobs                     -> read jobs.json (the rich board)
-    POST /jobs                     -> upsert a job ({label,branch?,repo?,status?,note?,docs?,pr?,id?})
+    POST /jobs                     -> upsert a job ({label,branch?,repo?,status?,note?,docs?,pr?,discoveredFrom?,id?})
     DELETE /jobs/{id}               -> delete a job
     GET  /ado/assigned             -> my current-sprint ADO work; az-backed, cached ~120s;
                                        ?refresh=1 bypass, ?demo=1 fixture
@@ -177,6 +177,11 @@ function Merge-JobUpsert {
         else { $Existing | Add-Member -NotePropertyName repo -NotePropertyValue (Get-Prop $Job 'repo') }
         if ($Existing.PSObject.Properties['pr']) { $Existing.pr = Get-Prop $Job 'pr' $Existing.pr }
         else { $Existing | Add-Member -NotePropertyName pr -NotePropertyValue (Get-Prop $Job 'pr') }
+        # Points at the id of the job this one was discovered while working on. Absent means a
+        # root job, which is the truthful reading for every job predating the field — so unlike
+        # num and updatedAt there is nothing to backfill.
+        if ($Existing.PSObject.Properties['discoveredFrom']) { $Existing.discoveredFrom = Get-Prop $Job 'discoveredFrom' $Existing.discoveredFrom }
+        else { $Existing | Add-Member -NotePropertyName discoveredFrom -NotePropertyValue (Get-Prop $Job 'discoveredFrom') }
         $Existing.status = Get-Prop $Job 'status' $Existing.status
         $Existing.note   = Get-Prop $Job 'note'   $Existing.note
         $Existing.docs   = @(@(Get-Prop $Job 'docs'   (Get-Prop $Existing 'docs' @())) | Where-Object { $_ -ne $null })
@@ -190,6 +195,7 @@ function Merge-JobUpsert {
         branch    = Get-Prop $Job 'branch'
         repo      = Get-Prop $Job 'repo'
         pr        = Get-Prop $Job 'pr'
+        discoveredFrom = Get-Prop $Job 'discoveredFrom'
         status    = Get-Prop $Job 'status' 'Planned'
         note      = Get-Prop $Job 'note'
         docs      = @(@(Get-Prop $Job 'docs' @()) | Where-Object { $_ -ne $null })

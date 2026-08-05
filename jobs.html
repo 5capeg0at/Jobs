@@ -353,6 +353,15 @@ body.narrow #rail { width:auto; flex:1; }
   padding:2px 8px; border-radius:20px; background:color-mix(in oklch,var(--pr) 18%,var(--surface)); color:var(--pr);
   text-decoration:none; }
 .prchip:hover { filter:brightness(1.15); }
+/* lineage chips sit beside the PR chip; deliberately neutral, since provenance is context
+   rather than an action to take. The parent variant is outlined instead of filled so a card
+   spawning work reads differently at a glance from one that came from somewhere. */
+.lchip { display:inline-block; margin-top:6px; margin-right:5px; font-family:var(--mono); font-size:10px;
+  font-weight:600; padding:2px 8px; border-radius:20px; color:var(--faint);
+  background:color-mix(in oklch,var(--faint) 12%,var(--surface)); text-decoration:none; }
+a.lchip { cursor:pointer; }
+a.lchip:hover { color:var(--accent); background:color-mix(in oklch,var(--accent) 15%,var(--surface)); }
+.lchip.parent { background:transparent; border:1px solid color-mix(in oklch,var(--faint) 45%,var(--surface)); }
 /* embedded board pane (wide-viewport, non-modal) — same column markup as the modal board */
 #board-pane .card { flex:1; min-height:0; }
 #board-pane .board-cols { padding:14px; }
@@ -686,6 +695,26 @@ function prChip(j) {
   return isHttpUrl(j.pr) ? `<a class="prchip" href="${h(j.pr)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">PR</a>` : '';
 }
 
+// Provenance, both directions: a job names what it was discovered while working on, and shows
+// how many jobs it has spawned. A job can be both, so both chips can appear. The point is that
+// a lineage quietly growing to nine open children reads as a number on the board rather than a
+// hunch — the parent link is a receipt for work that appeared, not a licence to file more.
+function lineageChip(j) {
+  let out = '';
+  if (j.discoveredFrom) {
+    const parent = jobs.find(p => p.id === j.discoveredFrom);
+    out += parent
+      ? `<a class="lchip" title="Discovered while working on #${h(parent.num)} ${h(parent.label)}" onclick="event.stopPropagation(); openJob('${jss(parent.id)}')">from #${h(parent.num)}</a>`
+      : `<span class="lchip" title="Parent job ${h(j.discoveredFrom)} is no longer on the board">from (gone)</span>`;
+  }
+  const children = jobs.filter(c => c.discoveredFrom === j.id);
+  if (children.length) {
+    const open = children.filter(isActive).length;
+    out += `<span class="lchip parent" title="Spawned ${children.length} job${children.length === 1 ? '' : 's'}, ${open} still open">${children.length} spawned${open ? ` · ${open} open` : ''}</span>`;
+  }
+  return out;
+}
+
 let lastPollAt = null;
 function tickAge() {
   if (railShowsAdo()) updateAdoSynced();
@@ -802,7 +831,7 @@ function renderJobsRail() {
       </div>
       <div class="jl">${h(j.label)}</div>
       ${j.branch ? `<div class="jb">${h(j.branch)}</div>` : ''}
-      ${prChip(j)}
+      ${prChip(j)}${lineageChip(j)}
     </div>`).join('');
 }
 
@@ -1244,7 +1273,7 @@ function renderBoardCols() {
     return `<div class="bcol" data-col="${h(col)}" ondragover="boardDragOver(event)" ondragleave="boardDragLeave(event)" ondrop="boardDrop(event)">
       <div class="bcolh"><span class="dot" style="background:${DOT[col]}"></span>${col}<span class="ct">${items.length}</span></div>
       <div class="bcards">${items.map(j =>
-        `<div class="bcard" draggable="true" ondragstart="boardDragStart(event,'${h(j.id)}')" ondragend="boardDragEnd(event)" onclick="openJob('${h(j.id)}')">${j.num?`<div class="bjnum">#${j.num}</div>`:''}<div class="l">${h(j.label)}</div>${j.branch?`<div class="b">${h(j.branch)}</div>`:''}${prChip(j)}</div>`).join('')}</div>
+        `<div class="bcard" draggable="true" ondragstart="boardDragStart(event,'${h(j.id)}')" ondragend="boardDragEnd(event)" onclick="openJob('${h(j.id)}')">${j.num?`<div class="bjnum">#${j.num}</div>`:''}<div class="l">${h(j.label)}</div>${j.branch?`<div class="b">${h(j.branch)}</div>`:''}${prChip(j)}${lineageChip(j)}</div>`).join('')}</div>
     </div>`;
   }).join('');
 }
