@@ -145,6 +145,7 @@ body.narrow #rail { width:auto; flex:1; }
   border-radius:9px; padding:6px 10px; font-size:11.5px; cursor:pointer; white-space:nowrap;
   display:inline-flex; align-items:center; gap:5px; }
 .hbtn:hover { color:var(--accent); border-color:var(--accent); }
+.hbtn.on { color:var(--ready); border-color:var(--ready); background:color-mix(in oklch,var(--ready) 14%,var(--surface)); }
 .hbtn svg { flex-shrink:0; }
 #jobs-brief { margin:0 auto; }
 
@@ -362,6 +363,13 @@ body.narrow #rail { width:auto; flex:1; }
 a.lchip { cursor:pointer; }
 a.lchip:hover { color:var(--accent); background:color-mix(in oklch,var(--accent) 15%,var(--surface)); }
 .lchip.parent { background:transparent; border:1px solid color-mix(in oklch,var(--faint) 45%,var(--surface)); }
+/* a gate chip carries the blocker's state, so a card reads as stuck or free without opening
+   anything: warn while the blocker is still open, struck through once it has closed — the
+   closed one stays on the card because "what was this waiting on" is the next question. */
+.lchip.gate { color:var(--warn); background:color-mix(in oklch,var(--warn) 15%,var(--surface)); }
+.lchip.gate.lifted { color:var(--faint); background:color-mix(in oklch,var(--faint) 12%,var(--surface));
+  text-decoration:line-through; }
+a.lchip.gate:hover { color:var(--accent); background:color-mix(in oklch,var(--accent) 15%,var(--surface)); }
 /* embedded board pane (wide-viewport, non-modal) — same column markup as the modal board */
 #board-pane .card { flex:1; min-height:0; }
 #board-pane .board-cols { padding:14px; }
@@ -602,6 +610,9 @@ body.slab.ado #rail { width:auto; flex:1; }
           <input placeholder="Search…" autocomplete="off" oninput="onBoardSearchInput(event)">
           <button class="bsearch-clear hidden" onclick="clearBoardSearch()" title="Clear">×</button>
         </div>
+        <button class="hbtn frontier-btn" onclick="toggleFrontier()" title="Frontier: only jobs whose blockers have all lifted">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 17 5-5-5-5M13 17l5-5-5-5"/></svg>
+          <span class="btxt">Frontier</span></button>
         <button class="hbtn" onclick="openBrief()" title="Open latest brief">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg>
           <span class="btxt">Brief</span></button>
@@ -715,6 +726,36 @@ function lineageChip(j) {
   return out;
 }
 
+// The dependency edge, stored as the job NUMBERS a job waits on — the same "#137" a note
+// would have said in prose. A blocker that has closed, or has left the board entirely, can't
+// hold anything back, so open blockers are the only ones that gate.
+const blockersOf = j => (Array.isArray(j.blockedBy) ? j.blockedBy : []).map(num => {
+  const blocker = jobs.find(b => b.num === num);
+  return { num, blocker, open: !!blocker && isActive(blocker) };
+});
+
+function gateChip(j) {
+  return blockersOf(j).map(({ num, blocker, open }) => blocker
+    ? `<a class="lchip gate${open ? '' : ' lifted'}" title="${open ? 'Waiting on' : 'Was waiting on'} #${h(num)} ${h(blocker.label)} (${h(blocker.status)})" onclick="event.stopPropagation(); openJob('${jss(blocker.id)}')">gated by #${h(num)}</a>`
+    : `<span class="lchip gate lifted" title="Job #${h(num)} is no longer on the board, so it gates nothing">gated by #${h(num)}</span>`
+  ).join('');
+}
+
+// The frontier: work that could actually be picked up right now — active, not parked or
+// blocked, and with every gate lifted. Derived on read and never stored, so a job joins the
+// frontier the moment its last blocker closes without anyone remembering to flip a field.
+const FRONTIER_EXCLUDES = ['Done', 'Removed', 'Parked', 'Blocked'];
+const isFrontier = j => !FRONTIER_EXCLUDES.includes(j.status) && !blockersOf(j).some(b => b.open);
+let frontierOnly = false;
+function toggleFrontier() {
+  frontierOnly = !frontierOnly;
+  document.querySelectorAll('.frontier-btn').forEach(b => b.classList.toggle('on', frontierOnly));
+  renderJobsRail();
+  renderBoardPane();
+  const mcols = document.querySelector('.modal.board .board-cols');
+  if (mcols) mcols.innerHTML = renderBoardCols();
+}
+
 let lastPollAt = null;
 function tickAge() {
   if (railShowsAdo()) updateAdoSynced();
@@ -814,7 +855,7 @@ function renderJobsRail() {
   if (railShowsAdo()) return;
   const list = document.getElementById('jobs-list');
   const filtering = !!jobsQuery.trim();
-  const pool = filtering ? jobs : jobs.filter(isActive);
+  const pool = (filtering ? jobs : jobs.filter(isActive)).filter(j => !frontierOnly || isFrontier(j));
   const shown = pool.filter(j => jobMatches(j, jobsQuery)).sort((a,b) => railRank(a.status) - railRank(b.status));
   document.getElementById('jobs-count').textContent = shown.length;
   if (!shown.length) {
@@ -831,7 +872,7 @@ function renderJobsRail() {
       </div>
       <div class="jl">${h(j.label)}</div>
       ${j.branch ? `<div class="jb">${h(j.branch)}</div>` : ''}
-      ${prChip(j)}${lineageChip(j)}
+      ${prChip(j)}${gateChip(j)}${lineageChip(j)}
     </div>`).join('');
 }
 
@@ -1266,14 +1307,14 @@ function refreshOpenModals() {
 
 function renderBoardCols() {
   return BOARD_COLS.map(col => {
-    let items = jobs.filter(j => j.status === col && jobMatches(j, jobsQuery));
+    let items = jobs.filter(j => j.status === col && jobMatches(j, jobsQuery) && (!frontierOnly || isFrontier(j)));
     if (col === 'Done' || col === 'Removed') {
       items = items.slice().sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
     }
     return `<div class="bcol" data-col="${h(col)}" ondragover="boardDragOver(event)" ondragleave="boardDragLeave(event)" ondrop="boardDrop(event)">
       <div class="bcolh"><span class="dot" style="background:${DOT[col]}"></span>${col}<span class="ct">${items.length}</span></div>
       <div class="bcards">${items.map(j =>
-        `<div class="bcard" draggable="true" ondragstart="boardDragStart(event,'${h(j.id)}')" ondragend="boardDragEnd(event)" onclick="openJob('${h(j.id)}')">${j.num?`<div class="bjnum">#${j.num}</div>`:''}<div class="l">${h(j.label)}</div>${j.branch?`<div class="b">${h(j.branch)}</div>`:''}${prChip(j)}${lineageChip(j)}</div>`).join('')}</div>
+        `<div class="bcard" draggable="true" ondragstart="boardDragStart(event,'${h(j.id)}')" ondragend="boardDragEnd(event)" onclick="openJob('${h(j.id)}')">${j.num?`<div class="bjnum">#${j.num}</div>`:''}<div class="l">${h(j.label)}</div>${j.branch?`<div class="b">${h(j.branch)}</div>`:''}${prChip(j)}${gateChip(j)}${lineageChip(j)}</div>`).join('')}</div>
     </div>`;
   }).join('');
 }
@@ -1293,6 +1334,9 @@ function openKanban() {
             <input placeholder="Search…" autocomplete="off" value="${h(jobsQuery)}" oninput="onBoardSearchInput(event)">
             <button class="bsearch-clear${jobsQuery ? '' : ' hidden'}" onclick="clearBoardSearch()" title="Clear">×</button>
           </div>
+          <button class="hbtn frontier-btn${frontierOnly ? ' on' : ''}" onclick="toggleFrontier()" title="Frontier: only jobs whose blockers have all lifted">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 17 5-5-5-5M13 17l5-5-5-5"/></svg>
+            <span class="btxt">Frontier</span></button>
           <button class="hbtn" onclick="openBrief()" title="Open latest brief">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg>
             <span class="btxt">Brief</span></button>
