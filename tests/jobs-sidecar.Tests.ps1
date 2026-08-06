@@ -75,6 +75,83 @@ Describe 'Merge-JobUpsert (rich board, jobs.json)' {
         $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
         $j.discoveredFrom | Should Be 'f1a2b3c4'
     }
+
+    It 'stamps blockedBy job numbers on create' {
+        $body = [pscustomobject]@{ label = 'gated job'; blockedBy = @(137, 19) }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        @($j.blockedBy).Count | Should Be 2
+        $j.blockedBy[0] | Should Be 137
+    }
+
+    It 'stores blockedBy as ints so a "#N" lookup never compares string to number' {
+        $body = [pscustomobject]@{ label = 'gated job'; blockedBy = @('137') }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        $j.blockedBy[0] -is [int] | Should Be $true
+    }
+
+    It 'defaults blockedBy to empty on create when omitted' {
+        $body = [pscustomobject]@{ label = 'new job' }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        @($j.blockedBy).Count | Should Be 0
+    }
+
+    It 'preserves existing blockers when the update body omits blockedBy' {
+        $existing = [pscustomobject]@{ id='x'; label='j'; branch='b'; repo='example-repo'; pr=''; blockedBy=@(137); status='Planned'; note=''; docs=@() }
+        $body = [pscustomobject]@{ id = 'x'; status = 'In progress' }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        @($j.blockedBy).Count | Should Be 1
+        $j.blockedBy[0] | Should Be 137
+    }
+
+    It 'clears blockers when the update body passes an empty array' {
+        $existing = [pscustomobject]@{ id='x'; label='j'; branch='b'; repo='example-repo'; pr=''; blockedBy=@(137); status='Planned'; note=''; docs=@() }
+        $body = [pscustomobject]@{ id = 'x'; blockedBy = @() }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        @($j.blockedBy).Count | Should Be 0
+    }
+
+    It 'sets blockedBy on an existing job predating the field' {
+        $existing = [pscustomobject]@{ id='z'; label='j'; branch='b'; repo='example-repo'; status='Planned'; note=''; docs=@() }   # no blockedBy property at all
+        $body = [pscustomobject]@{ id = 'z'; blockedBy = @(137) }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        $j.blockedBy[0] | Should Be 137
+    }
+}
+
+Describe 'Get-BlockedByProblem (blockedBy validation on upsert)' {
+    It 'accepts an omitted blockedBy — most jobs gate on nothing' {
+        Get-BlockedByProblem $null | Should BeNullOrEmpty
+    }
+
+    It 'accepts an empty array, which is how blockers get cleared' {
+        Get-BlockedByProblem @() | Should BeNullOrEmpty
+    }
+
+    It 'accepts an array of job numbers' {
+        Get-BlockedByProblem @(137, 19) | Should BeNullOrEmpty
+    }
+
+    It 'accepts numeric strings, since JSON from a shell often quotes numbers' {
+        Get-BlockedByProblem @('137') | Should BeNullOrEmpty
+    }
+
+    It 'rejects a bare number — a single blocker still travels as an array' {
+        Get-BlockedByProblem 137 | Should Match 'array'
+    }
+
+    It 'rejects a string, including one that looks like a list' {
+        Get-BlockedByProblem '137,19' | Should Match 'array'
+    }
+
+    It 'names the offending entry when one is not a job number' {
+        $problem = Get-BlockedByProblem @(137, 'ce4b2e6e')
+        $problem | Should Match 'ce4b2e6e'
+        $problem | Should Match 'job number'
+    }
+
+    It 'rejects a job id, the likeliest wrong thing to pass' {
+        Get-BlockedByProblem @('0628cb55') | Should Match 'job number'
+    }
 }
 
 Describe 'Get-NextJobNum (monotonic job numbering)' {

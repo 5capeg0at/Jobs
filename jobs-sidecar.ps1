@@ -9,7 +9,7 @@
     POST /config/repos             -> register a repo ({key,path,trunk?}) in the gitignored
                                        jobs.config.local.json
     GET  /jobs                     -> read jobs.json (the rich board)
-    POST /jobs                     -> upsert a job ({label,branch?,repo?,status?,note?,docs?,pr?,discoveredFrom?,id?})
+    POST /jobs                     -> upsert a job ({label,branch?,repo?,status?,note?,docs?,pr?,discoveredFrom?,blockedBy?,id?})
     DELETE /jobs/{id}               -> delete a job
     GET  /ado/assigned             -> my current-sprint ADO work; az-backed, cached ~120s;
                                        ?refresh=1 bypass, ?demo=1 fixture
@@ -164,6 +164,31 @@ function Test-KnownRepo {
     [bool]($Repos -and $Repos.PSObject.Properties[$Key])
 }
 
+function Get-BlockedByProblem {
+    # Pure: $null when $Value is an acceptable blockedBy, else the sentence to 400 with.
+    # Blockers are job NUMBERS, not ids — that's how a note already cross-references a job
+    # ("GATED BY #137"), and it's what the card chips render. An id looks close enough to a
+    # number that passing one silently would gate a job on nothing, so say which entry is wrong.
+    param($Value)
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [string] -or $Value -isnot [System.Collections.IEnumerable]) {
+        return "blockedBy must be an array of job numbers, got '$Value'"
+    }
+    foreach ($n in $Value) {
+        if ($null -eq $n -or "$n" -notmatch '^\s*\d+\s*$') { return "blockedBy entry '$n' is not a job number" }
+    }
+    return $null
+}
+
+function ConvertTo-BlockedBy {
+    # Pure: normalise a validated blockedBy to an int array, so a blocker written as "137"
+    # still matches job #137 when the board looks it up.
+    param($Value)
+    # Comma-wrapped: a bare empty array leaves a function as $null, which would land in
+    # jobs.json as a null blockedBy rather than "no blockers".
+    ,@(@($Value) | Where-Object { $null -ne $_ } | ForEach-Object { [int]$_ })
+}
+
 function Merge-JobUpsert {
     # Pure: computes the job to persist for a POST /jobs body. $Existing -> update (mutated
     # in place, field-by-field, an omitted field falling back to its current value); $null ->
@@ -182,6 +207,13 @@ function Merge-JobUpsert {
         # num and updatedAt there is nothing to backfill.
         if ($Existing.PSObject.Properties['discoveredFrom']) { $Existing.discoveredFrom = Get-Prop $Job 'discoveredFrom' $Existing.discoveredFrom }
         else { $Existing | Add-Member -NotePropertyName discoveredFrom -NotePropertyValue (Get-Prop $Job 'discoveredFrom') }
+        # The job numbers gating this one. An omitted key keeps the current blockers, an explicit
+        # [] clears them — which is the common edit, since a gate lifting is what blockedBy is for.
+        # That's why presence is tested rather than leaning on Get-Prop's default: an empty array
+        # reads as absent there, so the fallback would make blockers unclearable. Old jobs have no
+        # such property at all, hence Add-Member over assignment.
+        $blockedBy = if ($Job.PSObject.Properties['blockedBy']) { $Job.blockedBy } else { Get-Prop $Existing 'blockedBy' @() }
+        $Existing | Add-Member -NotePropertyName blockedBy -NotePropertyValue (ConvertTo-BlockedBy $blockedBy) -Force
         $Existing.status = Get-Prop $Job 'status' $Existing.status
         $Existing.note   = Get-Prop $Job 'note'   $Existing.note
         $Existing.docs   = @(@(Get-Prop $Job 'docs'   (Get-Prop $Existing 'docs' @())) | Where-Object { $_ -ne $null })
@@ -196,6 +228,7 @@ function Merge-JobUpsert {
         repo      = Get-Prop $Job 'repo'
         pr        = Get-Prop $Job 'pr'
         discoveredFrom = Get-Prop $Job 'discoveredFrom'
+        blockedBy = ConvertTo-BlockedBy (Get-Prop $Job 'blockedBy' @())
         status    = Get-Prop $Job 'status' 'Planned'
         note      = Get-Prop $Job 'note'
         docs      = @(@(Get-Prop $Job 'docs' @()) | Where-Object { $_ -ne $null })
@@ -221,6 +254,12 @@ function Handle-PostJob { param($Ctx)
         $valid = (($repos.PSObject.Properties.Name | Sort-Object) -join ', ')
         Send-Err $Ctx "unknown repo key '$repoKey' - valid keys: $valid"; return
     }
+
+    # Read straight off the object rather than through Get-Prop: returning a value from a
+    # function unrolls it, so a one-blocker [137] would arrive here as a bare 137 and be
+    # rejected as "not an array" — which is the single commonest body this endpoint gets.
+    $blockedProblem = if ($job.PSObject.Properties['blockedBy']) { Get-BlockedByProblem $job.blockedBy } else { $null }
+    if ($blockedProblem) { Send-Err $Ctx $blockedProblem; return }
 
     $data = Read-Jobs
     $jobs = [System.Collections.Generic.List[object]] @($data.jobs)
