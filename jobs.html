@@ -370,6 +370,10 @@ a.lchip:hover { color:var(--accent); background:color-mix(in oklch,var(--accent)
 .lchip.gate.lifted { color:var(--faint); background:color-mix(in oklch,var(--faint) 12%,var(--surface));
   text-decoration:line-through; }
 a.lchip.gate:hover { color:var(--accent); background:color-mix(in oklch,var(--accent) 15%,var(--surface)); }
+/* an undermining is a summons, not a verdict: the chip never lifts — it disappears only
+   when a human clears the field after re-examining the premise */
+.lchip.undermined { color:var(--warn); background:color-mix(in oklch,var(--warn) 25%,var(--surface)); font-weight:600; }
+a.lchip.undermined:hover { color:var(--accent); background:color-mix(in oklch,var(--accent) 15%,var(--surface)); }
 /* embedded board pane (wide-viewport, non-modal) — same column markup as the modal board */
 #board-pane .card { flex:1; min-height:0; }
 #board-pane .board-cols { padding:14px; }
@@ -741,11 +745,24 @@ function gateChip(j) {
   ).join('');
 }
 
+// The findings challenging this job's premise. Unlike a gate there is no "open" state —
+// the summons stands until a human clears underminedBy or disposes of the job, so while
+// any entry exists the job is off the frontier.
+const underminedOf = j => Array.isArray(j.underminedBy) ? j.underminedBy : [];
+function underminedChip(j) {
+  return underminedOf(j).map(num => {
+    const finding = jobs.find(p => p.num === num);
+    return finding
+      ? `<a class="lchip undermined" title="Premise challenged by #${h(num)} ${h(finding.label)} — re-examine, then clear underminedBy or dispose of this job" onclick="event.stopPropagation(); openJob('${jss(finding.id)}')">undermined by #${h(num)}</a>`
+      : `<span class="lchip undermined" title="Premise challenged by #${h(num)} (no longer on the board) — re-examine, then clear underminedBy">undermined by #${h(num)}</span>`;
+  }).join('');
+}
+
 // The frontier: work that could actually be picked up right now — active, not parked or
 // blocked, and with every gate lifted. Derived on read and never stored, so a job joins the
 // frontier the moment its last blocker closes without anyone remembering to flip a field.
 const FRONTIER_EXCLUDES = ['Done', 'Removed', 'Parked', 'Blocked'];
-const isFrontier = j => !FRONTIER_EXCLUDES.includes(j.status) && !blockersOf(j).some(b => b.open);
+const isFrontier = j => !FRONTIER_EXCLUDES.includes(j.status) && !blockersOf(j).some(b => b.open) && !underminedOf(j).length;
 let frontierOnly = false;
 function toggleFrontier() {
   frontierOnly = !frontierOnly;
@@ -872,7 +889,7 @@ function renderJobsRail() {
       </div>
       <div class="jl">${h(j.label)}</div>
       ${j.branch ? `<div class="jb">${h(j.branch)}</div>` : ''}
-      ${prChip(j)}${gateChip(j)}${lineageChip(j)}
+      ${prChip(j)}${gateChip(j)}${underminedChip(j)}${lineageChip(j)}
     </div>`).join('');
 }
 
@@ -1314,7 +1331,7 @@ function renderBoardCols() {
     return `<div class="bcol" data-col="${h(col)}" ondragover="boardDragOver(event)" ondragleave="boardDragLeave(event)" ondrop="boardDrop(event)">
       <div class="bcolh"><span class="dot" style="background:${DOT[col]}"></span>${col}<span class="ct">${items.length}</span></div>
       <div class="bcards">${items.map(j =>
-        `<div class="bcard" draggable="true" ondragstart="boardDragStart(event,'${h(j.id)}')" ondragend="boardDragEnd(event)" onclick="openJob('${h(j.id)}')">${j.num?`<div class="bjnum">#${j.num}</div>`:''}<div class="l">${h(j.label)}</div>${j.branch?`<div class="b">${h(j.branch)}</div>`:''}${prChip(j)}${gateChip(j)}${lineageChip(j)}</div>`).join('')}</div>
+        `<div class="bcard" draggable="true" ondragstart="boardDragStart(event,'${h(j.id)}')" ondragend="boardDragEnd(event)" onclick="openJob('${h(j.id)}')">${j.num?`<div class="bjnum">#${j.num}</div>`:''}<div class="l">${h(j.label)}</div>${j.branch?`<div class="b">${h(j.branch)}</div>`:''}${prChip(j)}${gateChip(j)}${underminedChip(j)}${lineageChip(j)}</div>`).join('')}</div>
     </div>`;
   }).join('');
 }
