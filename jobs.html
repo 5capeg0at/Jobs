@@ -374,6 +374,9 @@ a.lchip.gate:hover { color:var(--accent); background:color-mix(in oklch,var(--ac
    when a human clears the field after re-examining the premise */
 .lchip.undermined { color:var(--warn); background:color-mix(in oklch,var(--warn) 25%,var(--surface)); font-weight:600; }
 a.lchip.undermined:hover { color:var(--accent); background:color-mix(in oklch,var(--accent) 15%,var(--surface)); }
+/* the curated short list — the aiming act. Marker, not shout: it only needs to win a
+   glance inside the frontier view */
+.lchip.nextmark { color:var(--accent); background:color-mix(in oklch,var(--accent) 15%,var(--surface)); font-weight:600; }
 /* embedded board pane (wide-viewport, non-modal) — same column markup as the modal board */
 #board-pane .card { flex:1; min-height:0; }
 #board-pane .board-cols { padding:14px; }
@@ -758,6 +761,8 @@ function underminedChip(j) {
   }).join('');
 }
 
+const nextChip = j => j.next ? `<span class="lchip nextmark" title="On the short list — pick these up first">next</span>` : '';
+
 // The frontier: work that could actually be picked up right now — active, not parked or
 // blocked, and with every gate lifted. Derived on read and never stored, so a job joins the
 // frontier the moment its last blocker closes without anyone remembering to flip a field.
@@ -872,7 +877,8 @@ function renderJobsRail() {
   if (railShowsAdo()) return;
   const list = document.getElementById('jobs-list');
   const filtering = !!jobsQuery.trim();
-  const pool = (filtering ? jobs : jobs.filter(isActive)).filter(j => !frontierOnly || isFrontier(j));
+  let pool = (filtering ? jobs : jobs.filter(isActive)).filter(j => !frontierOnly || isFrontier(j));
+  if (frontierOnly) pool = [...pool].sort((a, b) => (b.next === true) - (a.next === true));
   const shown = pool.filter(j => jobMatches(j, jobsQuery)).sort((a,b) => railRank(a.status) - railRank(b.status));
   document.getElementById('jobs-count').textContent = shown.length;
   if (!shown.length) {
@@ -889,7 +895,7 @@ function renderJobsRail() {
       </div>
       <div class="jl">${h(j.label)}</div>
       ${j.branch ? `<div class="jb">${h(j.branch)}</div>` : ''}
-      ${prChip(j)}${gateChip(j)}${underminedChip(j)}${lineageChip(j)}
+      ${nextChip(j)}${prChip(j)}${gateChip(j)}${underminedChip(j)}${lineageChip(j)}
     </div>`).join('');
 }
 
@@ -1325,13 +1331,14 @@ function refreshOpenModals() {
 function renderBoardCols() {
   return BOARD_COLS.map(col => {
     let items = jobs.filter(j => j.status === col && jobMatches(j, jobsQuery) && (!frontierOnly || isFrontier(j)));
+    if (frontierOnly) items = [...items].sort((a, b) => (b.next === true) - (a.next === true));
     if (col === 'Done' || col === 'Removed') {
       items = items.slice().sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
     }
     return `<div class="bcol" data-col="${h(col)}" ondragover="boardDragOver(event)" ondragleave="boardDragLeave(event)" ondrop="boardDrop(event)">
       <div class="bcolh"><span class="dot" style="background:${DOT[col]}"></span>${col}<span class="ct">${items.length}</span></div>
       <div class="bcards">${items.map(j =>
-        `<div class="bcard" draggable="true" ondragstart="boardDragStart(event,'${h(j.id)}')" ondragend="boardDragEnd(event)" onclick="openJob('${h(j.id)}')">${j.num?`<div class="bjnum">#${j.num}</div>`:''}<div class="l">${h(j.label)}</div>${j.branch?`<div class="b">${h(j.branch)}</div>`:''}${prChip(j)}${gateChip(j)}${underminedChip(j)}${lineageChip(j)}</div>`).join('')}</div>
+        `<div class="bcard" draggable="true" ondragstart="boardDragStart(event,'${h(j.id)}')" ondragend="boardDragEnd(event)" onclick="openJob('${h(j.id)}')">${j.num?`<div class="bjnum">#${j.num}</div>`:''}<div class="l">${h(j.label)}</div>${j.branch?`<div class="b">${h(j.branch)}</div>`:''}${nextChip(j)}${prChip(j)}${gateChip(j)}${underminedChip(j)}${lineageChip(j)}</div>`).join('')}</div>
     </div>`;
   }).join('');
 }
