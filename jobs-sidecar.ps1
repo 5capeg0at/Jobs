@@ -181,6 +181,18 @@ function Get-BlockedByProblem {
     return $null
 }
 
+function Get-TypeProblem {
+    # Pure: $null when $Value is an acceptable type. The type names the artefact that
+    # closes the job (task -> a merged change, research -> prose), and the Done gate keys
+    # off it — an unknown value would silently exempt a job from the gate, so reject it
+    # by name. Absent/empty is untyped, the truthful reading for every job predating the
+    # field.
+    param($Value)
+    if ($null -eq $Value -or "$Value" -eq '') { return $null }
+    if ("$Value" -in @('task', 'research')) { return $null }
+    return "type must be 'task' or 'research', got '$Value'"
+}
+
 function ConvertTo-BlockedBy {
     # Pure: normalise a validated blockedBy to an int array, so a blocker written as "137"
     # still matches job #137 when the board looks it up.
@@ -208,6 +220,10 @@ function Merge-JobUpsert {
         # num and updatedAt there is nothing to backfill.
         if ($Existing.PSObject.Properties['discoveredFrom']) { $Existing.discoveredFrom = Get-Prop $Job 'discoveredFrom' $Existing.discoveredFrom }
         else { $Existing | Add-Member -NotePropertyName discoveredFrom -NotePropertyValue (Get-Prop $Job 'discoveredFrom') }
+        # Binary type naming the artefact that closes the job (task -> merged change, research -> prose).
+        # Absent/empty is untyped, the truthful reading for every job predating the field.
+        if ($Existing.PSObject.Properties['type']) { $Existing.type = Get-Prop $Job 'type' $Existing.type }
+        else { $Existing | Add-Member -NotePropertyName type -NotePropertyValue (Get-Prop $Job 'type') }
         # The job numbers gating this one. An omitted key keeps the current blockers, an explicit
         # [] clears them — which is the common edit, since a gate lifting is what blockedBy is for.
         # That's why presence is tested rather than leaning on Get-Prop's default: an empty array
@@ -235,6 +251,7 @@ function Merge-JobUpsert {
         repo      = Get-Prop $Job 'repo'
         pr        = Get-Prop $Job 'pr'
         discoveredFrom = Get-Prop $Job 'discoveredFrom'
+        type      = Get-Prop $Job 'type'
         blockedBy = ConvertTo-BlockedBy (Get-Prop $Job 'blockedBy' @())
         underminedBy = ConvertTo-BlockedBy (Get-Prop $Job 'underminedBy' @())
         status    = Get-Prop $Job 'status' 'Planned'
@@ -271,6 +288,9 @@ function Handle-PostJob { param($Ctx)
 
     $underminedProblem = if ($job.PSObject.Properties['underminedBy']) { Get-BlockedByProblem $job.underminedBy -FieldName 'underminedBy' } else { $null }
     if ($underminedProblem) { Send-Err $Ctx $underminedProblem; return }
+
+    $typeProblem = Get-TypeProblem (Get-Prop $job 'type')
+    if ($typeProblem) { Send-Err $Ctx $typeProblem; return }
 
     $data = Read-Jobs
     $jobs = [System.Collections.Generic.List[object]] @($data.jobs)

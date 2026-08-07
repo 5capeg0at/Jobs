@@ -152,6 +152,26 @@ Describe 'Merge-JobUpsert (rich board, jobs.json)' {
         $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
         $j.underminedBy[0] | Should Be 142
     }
+
+    It 'stamps type on create' {
+        $body = [pscustomobject]@{ label = 'typed job'; type = 'research' }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        $j.type | Should Be 'research'
+    }
+
+    It 'preserves type when the update body omits it' {
+        $existing = [pscustomobject]@{ id='x'; label='j'; branch='b'; repo='example-repo'; pr=''; type='task'; status='Planned'; note=''; docs=@() }
+        $body = [pscustomobject]@{ id = 'x'; note = 'progress' }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        $j.type | Should Be 'task'
+    }
+
+    It 'sets type on an existing job predating the field' {
+        $existing = [pscustomobject]@{ id='z'; label='j'; branch='b'; repo='example-repo'; status='Planned'; note=''; docs=@() }
+        $body = [pscustomobject]@{ id = 'z'; type = 'research' }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        $j.type | Should Be 'research'
+    }
 }
 
 Describe 'Get-BlockedByProblem (blockedBy validation on upsert)' {
@@ -196,6 +216,27 @@ Describe 'Get-BlockedByProblem with -FieldName (shared job-number-array validati
     }
     It 'names the field in the bad-entry message' {
         Get-BlockedByProblem @('ce4b2e6e') -FieldName 'underminedBy' | Should Match "underminedBy entry 'ce4b2e6e'"
+    }
+}
+
+Describe 'Get-TypeProblem (type validation on upsert)' {
+    It 'accepts an omitted type — every pre-existing job is untyped' {
+        Get-TypeProblem $null | Should BeNullOrEmpty
+    }
+    It 'accepts an empty string as untyped' {
+        Get-TypeProblem '' | Should BeNullOrEmpty
+    }
+    It 'accepts task' {
+        Get-TypeProblem 'task' | Should BeNullOrEmpty
+    }
+    It 'accepts research' {
+        Get-TypeProblem 'research' | Should BeNullOrEmpty
+    }
+    It 'rejects an unknown type naming the valid two' {
+        $problem = Get-TypeProblem 'prototype'
+        $problem | Should Match "task"
+        $problem | Should Match "research"
+        $problem | Should Match "prototype"
     }
 }
 
