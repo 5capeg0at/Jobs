@@ -279,6 +279,69 @@ Describe 'Get-NextProblem (next-flag validation on upsert)' {
     }
 }
 
+Describe 'Get-DoneGateProblem (closing artefact required on the way into Done)' {
+    It 'ignores upserts that do not land on Done' {
+        $body = [pscustomobject]@{ id='x'; status='In progress' }
+        $existing = [pscustomobject]@{ id='x'; type='research'; status='Planned'; note=''; pr='' }
+        Get-DoneGateProblem $body $existing | Should BeNullOrEmpty
+    }
+
+    It 'ignores a job already Done — nothing closed is held hostage' {
+        $body = [pscustomobject]@{ id='x'; label='renamed' }
+        $existing = [pscustomobject]@{ id='x'; type='research'; status='Done'; note=''; pr='' }
+        Get-DoneGateProblem $body $existing | Should BeNullOrEmpty
+    }
+
+    It 'blocks research -> Done with no note: the finding is the artefact' {
+        $body = [pscustomobject]@{ id='x'; status='Done' }
+        $existing = [pscustomobject]@{ id='x'; type='research'; status='In progress'; note=''; pr='' }
+        Get-DoneGateProblem $body $existing | Should Match 'note'
+    }
+
+    It 'passes research -> Done when the body carries the finding' {
+        $body = [pscustomobject]@{ id='x'; status='Done'; note='Finding: the premise held.' }
+        $existing = [pscustomobject]@{ id='x'; type='research'; status='In progress'; note=''; pr='' }
+        Get-DoneGateProblem $body $existing | Should BeNullOrEmpty
+    }
+
+    It 'passes research -> Done on a stored note when the body omits it' {
+        $body = [pscustomobject]@{ id='x'; status='Done' }
+        $existing = [pscustomobject]@{ id='x'; type='research'; status='In progress'; note='Finding already written.'; pr='' }
+        Get-DoneGateProblem $body $existing | Should BeNullOrEmpty
+    }
+
+    It 'blocks task -> Done with neither pr nor note' {
+        $body = [pscustomobject]@{ id='x'; status='Done' }
+        $existing = [pscustomobject]@{ id='x'; type='task'; status='In progress'; note=''; pr='' }
+        Get-DoneGateProblem $body $existing | Should Match 'pr'
+    }
+
+    It 'passes task -> Done on a pr alone — the merge sweep path' {
+        $body = [pscustomobject]@{ id='x'; status='Done' }
+        $existing = [pscustomobject]@{ id='x'; type='task'; status='PR'; note=''; pr='https://dev.azure.com/FINNZ/FishServe/_git/Kupe/pullrequest/5814' }
+        Get-DoneGateProblem $body $existing | Should BeNullOrEmpty
+    }
+
+    It 'treats untyped like task — pr or note passes, neither blocks' {
+        $blocked = [pscustomobject]@{ id='x'; status='Done' }
+        $bare    = [pscustomobject]@{ id='x'; status='In progress'; note=''; pr='' }
+        Get-DoneGateProblem $blocked $bare | Should Match 'pr'
+        $noted   = [pscustomobject]@{ id='x'; status='In progress'; note='wrapped up'; pr='' }
+        Get-DoneGateProblem $blocked $noted | Should BeNullOrEmpty
+    }
+
+    It 'gates a job created straight into Done' {
+        $body = [pscustomobject]@{ label='drive-by'; status='Done' }
+        Get-DoneGateProblem $body $null | Should Match 'pr'
+    }
+
+    It 'blocks whitespace-only notes — a blank line is not a finding' {
+        $body = [pscustomobject]@{ id='x'; status='Done'; note='   ' }
+        $existing = [pscustomobject]@{ id='x'; type='research'; status='In progress'; note=''; pr='' }
+        Get-DoneGateProblem $body $existing | Should Match 'note'
+    }
+}
+
 Describe 'Get-NextJobNum (monotonic job numbering)' {
     It 'starts at 1 on an empty board' {
         Get-NextJobNum ([pscustomobject]@{ jobs = @() }) | Should Be 1

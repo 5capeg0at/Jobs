@@ -203,6 +203,33 @@ function Get-NextProblem {
     return "next must be true or false, got '$Value'"
 }
 
+function Get-DoneGateProblem {
+    # Pure: $null when this upsert may proceed, else the 400 sentence. Fires only on a
+    # transition INTO Done, so nothing already closed is held hostage and the hourly
+    # PR-merge sweep (task jobs carry pr by construction) sails through. The artefact
+    # required is the type's closing contract: research closes with prose, anything else
+    # closes with a pr or prose. "Effective" values are post-merge — body wins when the
+    # key is present, else the stored value.
+    param($Job, $Existing)
+    $effStatus = if ($Job.PSObject.Properties['status'] -and $Job.status) { $Job.status }
+                 elseif ($Existing) { Get-Prop $Existing 'status' } else { 'Planned' }
+    if ($effStatus -ne 'Done') { return $null }
+    if ($Existing -and (Get-Prop $Existing 'status') -eq 'Done') { return $null }
+
+    $effType = if ($Job.PSObject.Properties['type']) { $Job.type } elseif ($Existing) { Get-Prop $Existing 'type' } else { $null }
+    $effNote = if ($Job.PSObject.Properties['note']) { $Job.note } elseif ($Existing) { Get-Prop $Existing 'note' } else { $null }
+    $effPr   = if ($Job.PSObject.Properties['pr'])   { $Job.pr }   elseif ($Existing) { Get-Prop $Existing 'pr' }   else { $null }
+    $hasNote = -not [string]::IsNullOrWhiteSpace("$effNote")
+    $hasPr   = -not [string]::IsNullOrWhiteSpace("$effPr")
+
+    if ("$effType" -eq 'research') {
+        if (-not $hasNote) { return 'research closes with a finding - Done needs a non-empty note' }
+        return $null
+    }
+    if (-not ($hasPr -or $hasNote)) { return 'Done needs a pr or a non-empty note - the artefact that closed it' }
+    return $null
+}
+
 function ConvertTo-BlockedBy {
     # Pure: normalise a validated blockedBy to an int array, so a blocker written as "137"
     # still matches job #137 when the board looks it up.
@@ -316,6 +343,9 @@ function Handle-PostJob { param($Ctx)
     $jobId    = Get-Prop $job 'id'
     $existing = $jobs | Where-Object { $_.id -eq $jobId } | Select-Object -First 1
     if (-not $existing -and -not (Get-Prop $job 'label')) { Send-Err $Ctx 'label required for new jobs'; return }
+
+    $doneProblem = Get-DoneGateProblem $job $existing
+    if ($doneProblem) { Send-Err $Ctx $doneProblem; return }
 
     $next     = Get-NextJobNum $data
     $upserted = Merge-JobUpsert -Job $job -Existing $existing -NextNum $next
