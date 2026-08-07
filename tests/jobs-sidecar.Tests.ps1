@@ -172,6 +172,32 @@ Describe 'Merge-JobUpsert (rich board, jobs.json)' {
         $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
         $j.type | Should Be 'research'
     }
+
+    It 'defaults next to false on create' {
+        $body = [pscustomobject]@{ label = 'plain job' }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        $j.next | Should Be $false
+    }
+
+    It 'stamps next true on create' {
+        $body = [pscustomobject]@{ label = 'short-listed job'; next = $true }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        $j.next | Should Be $true
+    }
+
+    It 'preserves next when the update body omits it' {
+        $existing = [pscustomobject]@{ id='x'; label='j'; branch='b'; repo='example-repo'; pr=''; next=$true; status='Planned'; note=''; docs=@() }
+        $body = [pscustomobject]@{ id = 'x'; note = 'progress' }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        $j.next | Should Be $true
+    }
+
+    It 'clears next with an explicit false — coming off the short list' {
+        $existing = [pscustomobject]@{ id='x'; label='j'; branch='b'; repo='example-repo'; pr=''; next=$true; status='Planned'; note=''; docs=@() }
+        $body = [pscustomobject]@{ id = 'x'; next = $false }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        $j.next | Should Be $false
+    }
 }
 
 Describe 'Get-BlockedByProblem (blockedBy validation on upsert)' {
@@ -237,6 +263,19 @@ Describe 'Get-TypeProblem (type validation on upsert)' {
         $problem | Should Match "task"
         $problem | Should Match "research"
         $problem | Should Match "prototype"
+    }
+}
+
+Describe 'Get-NextProblem (next-flag validation on upsert)' {
+    It 'accepts an omitted next' {
+        Get-NextProblem $null | Should BeNullOrEmpty
+    }
+    It 'accepts true and false' {
+        Get-NextProblem $true  | Should BeNullOrEmpty
+        Get-NextProblem $false | Should BeNullOrEmpty
+    }
+    It 'rejects a non-boolean — a truthy string would silently jump the queue' {
+        Get-NextProblem 'yes' | Should Match 'true or false'
     }
 }
 
