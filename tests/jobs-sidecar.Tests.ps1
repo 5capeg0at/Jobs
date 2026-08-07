@@ -116,6 +116,42 @@ Describe 'Merge-JobUpsert (rich board, jobs.json)' {
         $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
         $j.blockedBy[0] | Should Be 137
     }
+
+    It 'stamps underminedBy job numbers on create, as ints' {
+        $body = [pscustomobject]@{ label = 'challenged job'; underminedBy = @('142') }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        @($j.underminedBy).Count | Should Be 1
+        $j.underminedBy[0] | Should Be 142
+        $j.underminedBy[0] -is [int] | Should Be $true
+    }
+
+    It 'defaults underminedBy to empty on create when omitted' {
+        $body = [pscustomobject]@{ label = 'plain job' }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        @($j.underminedBy).Count | Should Be 0
+    }
+
+    It 'preserves underminedBy when the update body omits it' {
+        $existing = [pscustomobject]@{ id='x'; label='j'; branch='b'; repo='example-repo'; pr=''; underminedBy=@(142); status='Planned'; note=''; docs=@() }
+        $body = [pscustomobject]@{ id = 'x'; note = 'still challenged' }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        @($j.underminedBy).Count | Should Be 1
+        $j.underminedBy[0] | Should Be 142
+    }
+
+    It 'clears underminedBy with an explicit empty array — the premise survived' {
+        $existing = [pscustomobject]@{ id='x'; label='j'; branch='b'; repo='example-repo'; pr=''; underminedBy=@(142); status='Planned'; note=''; docs=@() }
+        $body = [pscustomobject]@{ id = 'x'; underminedBy = @() }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        @($j.underminedBy).Count | Should Be 0
+    }
+
+    It 'sets underminedBy on an existing job predating the field' {
+        $existing = [pscustomobject]@{ id='z'; label='j'; branch='b'; repo='example-repo'; status='Planned'; note=''; docs=@() }
+        $body = [pscustomobject]@{ id = 'z'; underminedBy = @(142) }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        $j.underminedBy[0] | Should Be 142
+    }
 }
 
 Describe 'Get-BlockedByProblem (blockedBy validation on upsert)' {
@@ -151,6 +187,15 @@ Describe 'Get-BlockedByProblem (blockedBy validation on upsert)' {
 
     It 'rejects a job id, the likeliest wrong thing to pass' {
         Get-BlockedByProblem @('0628cb55') | Should Match 'job number'
+    }
+}
+
+Describe 'Get-BlockedByProblem with -FieldName (shared job-number-array validation)' {
+    It 'names the field in the not-an-array message' {
+        Get-BlockedByProblem 142 -FieldName 'underminedBy' | Should Match 'underminedBy must be an array'
+    }
+    It 'names the field in the bad-entry message' {
+        Get-BlockedByProblem @('ce4b2e6e') -FieldName 'underminedBy' | Should Match "underminedBy entry 'ce4b2e6e'"
     }
 }
 

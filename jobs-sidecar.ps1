@@ -9,7 +9,7 @@
     POST /config/repos             -> register a repo ({key,path,trunk?}) in the gitignored
                                        jobs.config.local.json
     GET  /jobs                     -> read jobs.json (the rich board)
-    POST /jobs                     -> upsert a job ({label,branch?,repo?,status?,note?,docs?,pr?,discoveredFrom?,blockedBy?,id?})
+    POST /jobs                     -> upsert a job ({label,branch?,repo?,status?,note?,docs?,pr?,discoveredFrom?,blockedBy?,underminedBy?,id?})
     DELETE /jobs/{id}               -> delete a job
     GET  /ado/assigned             -> my current-sprint ADO work; az-backed, cached ~120s;
                                        ?refresh=1 bypass, ?demo=1 fixture
@@ -165,17 +165,18 @@ function Test-KnownRepo {
 }
 
 function Get-BlockedByProblem {
-    # Pure: $null when $Value is an acceptable blockedBy, else the sentence to 400 with.
-    # Blockers are job NUMBERS, not ids — that's how a note already cross-references a job
-    # ("GATED BY #137"), and it's what the card chips render. An id looks close enough to a
-    # number that passing one silently would gate a job on nothing, so say which entry is wrong.
-    param($Value)
+    # Pure: $null when $Value is an acceptable job-number array, else the sentence to 400
+    # with. Entries are job NUMBERS, not ids — that's how a note already cross-references a
+    # job ("GATED BY #137"), and it's what the card chips render. An id looks close enough
+    # to a number that passing one silently would point at nothing, so say which entry is
+    # wrong. Shared by blockedBy and underminedBy; $FieldName names the field in the message.
+    param($Value, [string]$FieldName = 'blockedBy')
     if ($null -eq $Value) { return $null }
     if ($Value -is [string] -or $Value -isnot [System.Collections.IEnumerable]) {
-        return "blockedBy must be an array of job numbers, got '$Value'"
+        return "$FieldName must be an array of job numbers, got '$Value'"
     }
     foreach ($n in $Value) {
-        if ($null -eq $n -or "$n" -notmatch '^\s*\d+\s*$') { return "blockedBy entry '$n' is not a job number" }
+        if ($null -eq $n -or "$n" -notmatch '^\s*\d+\s*$') { return "$FieldName entry '$n' is not a job number" }
     }
     return $null
 }
@@ -214,6 +215,12 @@ function Merge-JobUpsert {
         # such property at all, hence Add-Member over assignment.
         $blockedBy = if ($Job.PSObject.Properties['blockedBy']) { $Job.blockedBy } else { Get-Prop $Existing 'blockedBy' @() }
         $Existing | Add-Member -NotePropertyName blockedBy -NotePropertyValue (ConvertTo-BlockedBy $blockedBy) -Force
+        # The job numbers whose findings challenge this one's premise. Same merge shape as
+        # blockedBy (omitted keeps, explicit [] clears — clearing is how a human records
+        # "premise survived re-examination"). Unlike a gate, an undermining never lifts by
+        # itself, so the only writers are the finding's recorder and the human who clears it.
+        $underminedBy = if ($Job.PSObject.Properties['underminedBy']) { $Job.underminedBy } else { Get-Prop $Existing 'underminedBy' @() }
+        $Existing | Add-Member -NotePropertyName underminedBy -NotePropertyValue (ConvertTo-BlockedBy $underminedBy) -Force
         $Existing.status = Get-Prop $Job 'status' $Existing.status
         $Existing.note   = Get-Prop $Job 'note'   $Existing.note
         $Existing.docs   = @(@(Get-Prop $Job 'docs'   (Get-Prop $Existing 'docs' @())) | Where-Object { $_ -ne $null })
@@ -229,6 +236,7 @@ function Merge-JobUpsert {
         pr        = Get-Prop $Job 'pr'
         discoveredFrom = Get-Prop $Job 'discoveredFrom'
         blockedBy = ConvertTo-BlockedBy (Get-Prop $Job 'blockedBy' @())
+        underminedBy = ConvertTo-BlockedBy (Get-Prop $Job 'underminedBy' @())
         status    = Get-Prop $Job 'status' 'Planned'
         note      = Get-Prop $Job 'note'
         docs      = @(@(Get-Prop $Job 'docs' @()) | Where-Object { $_ -ne $null })
@@ -260,6 +268,9 @@ function Handle-PostJob { param($Ctx)
     # rejected as "not an array" — which is the single commonest body this endpoint gets.
     $blockedProblem = if ($job.PSObject.Properties['blockedBy']) { Get-BlockedByProblem $job.blockedBy } else { $null }
     if ($blockedProblem) { Send-Err $Ctx $blockedProblem; return }
+
+    $underminedProblem = if ($job.PSObject.Properties['underminedBy']) { Get-BlockedByProblem $job.underminedBy -FieldName 'underminedBy' } else { $null }
+    if ($underminedProblem) { Send-Err $Ctx $underminedProblem; return }
 
     $data = Read-Jobs
     $jobs = [System.Collections.Generic.List[object]] @($data.jobs)
