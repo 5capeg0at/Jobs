@@ -148,6 +148,7 @@ body.narrow #rail { width:auto; flex:1; }
 .hbtn.on { color:var(--ready); border-color:var(--ready); background:color-mix(in oklch,var(--ready) 14%,var(--surface)); }
 .hbtn svg { flex-shrink:0; }
 #jobs-brief { margin:0 auto; }
+.edgecount { color:var(--faint); font-size:.75rem; align-self:center; white-space:nowrap; }
 
 /* rail search: icon + pop-out that overlays the whole header row */
 .jobs-card .ch { position:relative; }
@@ -620,6 +621,7 @@ body.slab.ado #rail { width:auto; flex:1; }
         <button class="hbtn frontier-btn" onclick="toggleFrontier()" title="Frontier: only jobs whose blockers have all lifted">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 17 5-5-5-5M13 17l5-5-5-5"/></svg>
           <span class="btxt">Frontier</span></button>
+        <span class="edgecount" title="Graph edges on the board (blockedBy + discoveredFrom + underminedBy) — the star-map odometer"></span>
         <button class="hbtn" onclick="openBrief()" title="Open latest brief">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg>
           <span class="btxt">Brief</span></button>
@@ -763,6 +765,17 @@ function underminedChip(j) {
 
 const nextChip = j => j.next ? `<span class="lchip nextmark" title="On the short list — pick these up first">next</span>` : '';
 
+// The odometer for the parked star map: blockedBy + underminedBy entries plus
+// discoveredFrom links, over the whole board. When this reads ~20+ real edges the map
+// question reopens (see the #145 spec) — until then the graph lives in these numbers.
+const edgeCount = () => jobs.reduce((n, j) =>
+  n + (Array.isArray(j.blockedBy) ? j.blockedBy.length : 0)
+    + (Array.isArray(j.underminedBy) ? j.underminedBy.length : 0)
+    + (j.discoveredFrom ? 1 : 0), 0);
+function renderEdgeCount() {
+  document.querySelectorAll('.edgecount').forEach(e => { e.textContent = `${edgeCount()} edges`; });
+}
+
 // The frontier: work that could actually be picked up right now — active, not parked or
 // blocked, and with every gate lifted. Derived on read and never stored, so a job joins the
 // frontier the moment its last blocker closes without anyone remembering to flip a field.
@@ -832,6 +845,7 @@ async function loadJobs() {
     if (snap === jobsSnapshot) { lastPollAt = Date.now(); tickAge(); return; }
     jobsSnapshot = snap;
     jobs = d.jobs || [];
+    renderEdgeCount();
     renderJobsRail();
     renderBoardPane();
     refreshOpenModals();
@@ -1361,6 +1375,7 @@ function openKanban() {
           <button class="hbtn frontier-btn${frontierOnly ? ' on' : ''}" onclick="toggleFrontier()" title="Frontier: only jobs whose blockers have all lifted">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 17 5-5-5-5M13 17l5-5-5-5"/></svg>
             <span class="btxt">Frontier</span></button>
+          <span class="edgecount" title="Graph edges on the board (blockedBy + discoveredFrom + underminedBy) — the star-map odometer">${edgeCount()} edges</span>
           <button class="hbtn" onclick="openBrief()" title="Open latest brief">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg>
             <span class="btxt">Brief</span></button>
