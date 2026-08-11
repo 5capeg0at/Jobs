@@ -9,7 +9,8 @@
     POST /config/repos             -> register a repo ({key,path,trunk?}) in the gitignored
                                        jobs.config.local.json
     GET  /jobs                     -> read jobs.json (the rich board)
-    POST /jobs                     -> upsert a job ({label,branch?,repo?,status?,note?,docs?,pr?,discoveredFrom?,id?})
+    POST /jobs                     -> upsert a job ({label,branch?,repo?,status?,note?,docs?,docsAppend?,pr?,discoveredFrom?,id?});
+                                       docsAppend merges into docs (dedup by path) instead of replacing
     DELETE /jobs/{id}               -> delete a job
     GET  /ado/assigned             -> my current-sprint ADO work; az-backed, cached ~120s;
                                        ?refresh=1 bypass, ?demo=1 fixture
@@ -164,6 +165,17 @@ function Test-KnownRepo {
     [bool]($Repos -and $Repos.PSObject.Properties[$Key])
 }
 
+function Merge-DocsAppend {
+    # Merge docsAppend entries into docs instead of replacing the array (dedup by path,
+    # the incoming entry winning so a re-link can rename). This is the agent-safe write:
+    # a replace-shaped `docs` from a worker is how a job silently loses its other links.
+    param($Docs, $Append)
+    $append = @(@($Append) | Where-Object { $_ -ne $null })
+    $incomingPaths = @($append | ForEach-Object { $_.path })
+    $kept = @(@($Docs) | Where-Object { $_ -ne $null -and $_.path -notin $incomingPaths })
+    return @($kept + $append)
+}
+
 function Merge-JobUpsert {
     # Pure: computes the job to persist for a POST /jobs body. $Existing -> update (mutated
     # in place, field-by-field, an omitted field falling back to its current value); $null ->
@@ -185,6 +197,7 @@ function Merge-JobUpsert {
         $Existing.status = Get-Prop $Job 'status' $Existing.status
         $Existing.note   = Get-Prop $Job 'note'   $Existing.note
         $Existing.docs   = @(@(Get-Prop $Job 'docs'   (Get-Prop $Existing 'docs' @())) | Where-Object { $_ -ne $null })
+        if ($Job.PSObject.Properties['docsAppend']) { $Existing.docs = Merge-DocsAppend $Existing.docs $Job.docsAppend }
         $Existing | Add-Member -NotePropertyName updatedAt -NotePropertyValue (Get-Date -Format 'o') -Force
         return $Existing
     }
@@ -198,7 +211,8 @@ function Merge-JobUpsert {
         discoveredFrom = Get-Prop $Job 'discoveredFrom'
         status    = Get-Prop $Job 'status' 'Planned'
         note      = Get-Prop $Job 'note'
-        docs      = @(@(Get-Prop $Job 'docs' @()) | Where-Object { $_ -ne $null })
+        docs      = if ($Job.PSObject.Properties['docsAppend']) { Merge-DocsAppend @(@(Get-Prop $Job 'docs' @()) | Where-Object { $_ -ne $null }) $Job.docsAppend }
+                    else { @(@(Get-Prop $Job 'docs' @()) | Where-Object { $_ -ne $null }) }
         createdAt = (Get-Date -Format 'o')
         updatedAt = (Get-Date -Format 'o')
     }
