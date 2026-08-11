@@ -627,3 +627,29 @@ Describe 'Get-StaticContentType' {
     It 'maps .svg to image/svg+xml' { Get-StaticContentType 'x.svg' | Should Be 'image/svg+xml' }
     It 'falls back to octet-stream for unknown extensions' { Get-StaticContentType 'x.bin' | Should Be 'application/octet-stream' }
 }
+
+Describe 'Merge-JobUpsert docsAppend (merge, never clobber)' {
+    It 'appends new entries to the existing docs instead of replacing them' {
+        $existing = [pscustomobject]@{ id='x'; label='j'; branch='b'; repo='example-repo'; status='Review'; note=''; docs=@([pscustomobject]@{ name='SPEC'; path='C:\d\spec.md'; type='md' }) }
+        $body = [pscustomobject]@{ id='x'; docsAppend=@([pscustomobject]@{ name='HANDOVER'; path='C:\d\handover.md'; type='md' }) }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        @($j.docs).Count  | Should Be 2
+        $j.docs[0].name   | Should Be 'SPEC'
+        $j.docs[1].name   | Should Be 'HANDOVER'
+    }
+
+    It 'dedups by path, the incoming entry winning so a re-link can rename' {
+        $existing = [pscustomobject]@{ id='x'; label='j'; branch='b'; repo='example-repo'; status='Review'; note=''; docs=@([pscustomobject]@{ name='old name'; path='C:\d\a.md'; type='md' }) }
+        $body = [pscustomobject]@{ id='x'; docsAppend=@([pscustomobject]@{ name='new name'; path='C:\d\a.md'; type='md' }) }
+        $j = Merge-JobUpsert -Job $body -Existing $existing -NextNum 2
+        @($j.docs).Count  | Should Be 1
+        $j.docs[0].name   | Should Be 'new name'
+    }
+
+    It 'seeds docs on create when only docsAppend is given' {
+        $body = [pscustomobject]@{ label='new job'; docsAppend=@([pscustomobject]@{ name='SPEC'; path='C:\d\spec.md'; type='md' }) }
+        $j = Merge-JobUpsert -Job $body -Existing $null -NextNum 1
+        @($j.docs).Count  | Should Be 1
+        $j.docs[0].name   | Should Be 'SPEC'
+    }
+}
