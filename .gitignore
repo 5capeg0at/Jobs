@@ -8,3 +8,4 @@ docs/
 
 # Agent worktrees + local tooling state.
 .claude/
+.playwright-cli/
