@@ -21,6 +21,9 @@ A table, one row per catalogue task that appears in EITHER the plan or the actua
 
 | task | plan | actual | verdict | note |
 
+The task cell is the catalogue task id exactly as the plan's bold text (no time suffix). A script
+parses this table into a ledger, so keep the five columns and one row per task.
+
 verdict is one of:
 - matched: planned it and he did it (or the shadow did it read-only and he did the real thing)
 - missed: he did it, the plan did not have it
@@ -50,3 +53,4 @@ one spoken sentence; he replies in his notes-to-self Slack DM and tomorrow's mor
 them. Ask nothing you could have found in the record.
 
 NZ English, ASCII only. Final message: one line, the path you appended to. Do not call SendMessage.
+

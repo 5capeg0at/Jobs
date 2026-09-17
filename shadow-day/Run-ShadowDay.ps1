@@ -47,6 +47,7 @@ $inputs = Join-Path $shadow "$d-inputs-$Mode.md"
 $board = Join-Path $shadow "$d-board.json"
 $log = Join-Path $shadow "$d-$Mode.log"
 function Log($m) { $line = "[$(Get-Date -Format 'HH:mm:ss')] $m"; Add-Content $log $line; Write-Host $line }
+$startedAt = Get-Date
 
 # Leave and weekends: nothing to shadow, and no baseline to compare against.
 if ((IsOff $Date) -and -not $Force) {
@@ -86,6 +87,7 @@ $sb = [System.Text.StringBuilder]::new()
 foreach ($f in Get-ChildItem $tmp -Filter '*.md' | Sort-Object Name) { [void]$sb.AppendLine((Get-Content $f.FullName -Raw)) }
 $sb.ToString() | Set-Content $inputs -Encoding utf8
 
+Log 'board snapshot'
 try {
     $jobs = (Invoke-RestMethod http://localhost:7799/jobs).jobs | Where-Object { $_.status -notin 'Done', 'Removed' } |
         Select-Object num, label, status, repo, branch, next, blockedBy, updatedAt, @{n = 'note'; e = { "$($_.note)".Substring(0, [Math]::Min(300, "$($_.note)".Length)) } }
@@ -94,6 +96,7 @@ try {
 
 $dayfile = Join-Path $dir "days\$d.md"
 if ($Mode -eq 'evening') {
+    Log 'flattening transcripts'
     & (Join-Path $here 'Flatten-Transcripts.ps1') -Since $Date -OutDir (Join-Path $env:TEMP "shadow-days-$d") *>> $log
     $candidate = Join-Path $env:TEMP "shadow-days-$d\$d.md"
     if (Test-Path $candidate) { Copy-Item $candidate $dayfile -Force } else { Log 'no transcript day-file for today' }
@@ -141,13 +144,27 @@ try {
     Get-Content $promptFile -Raw | claude --model $Model -p --output-format text --allowedTools $allowed --disallowedTools $disallowed 2>&1 | Tee-Object -FilePath $log -Append | Out-Null
 } finally { Pop-Location }
 
-if (-not (Test-Path $out)) { Log "[FAIL] no output written to $out"; exit 1 }
+$ledger = Join-Path $here 'Update-Ledger.ps1'
+if (-not (Test-Path $out)) {
+    Log "[FAIL] no output written to $out"
+    & $ledger -Date $Date -Mode $Mode -StartedAt $startedAt -Ok $false *>> $log
+    exit 1
+}
 $text = Get-Content $out -Raw
-if ($Mode -eq 'evening' -and $text.Length -le $before) { Log '[FAIL] evening run appended nothing'; exit 1 }
+if ($Mode -eq 'evening' -and $text.Length -le $before) {
+    Log '[FAIL] evening run appended nothing'
+    & $ledger -Date $Date -Mode $Mode -StartedAt $startedAt -Ok $false -Chars $text.Length *>> $log
+    exit 1
+}
 Log "[OK] $out ($($text.Length) chars)"
 
+$slack = @{}
 if (-not $NoSlack) {
     $dm = if ($Mode -eq 'evening') { $t = Join-Path $env:TEMP "shadow-dm-$d.md"; $text.Substring($before) | Set-Content $t -Encoding utf8; $t } else { $out }
-    & "$HOME\.claude\scripts\send-slack-digest.ps1" -Path $dm *>> $log
+    $posted = & "$HOME\.claude\scripts\send-slack-digest.ps1" -Path $dm 2>&1 | Tee-Object -FilePath $log -Append
+    if ("$posted" -match 'ts=(\S+) channel=(\S+) permalink=(\S+)') { $slack = @{ SlackTs = $Matches[1]; SlackChannel = $Matches[2]; SlackPermalink = $Matches[3] } }
     Log 'DM sent'
 }
+& $ledger -Date $Date -Mode $Mode -StartedAt $startedAt -Ok $true -Chars $text.Length @slack *>> $log
+Log 'ledger appended'
+

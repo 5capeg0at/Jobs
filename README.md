@@ -48,7 +48,7 @@ over the base, your values win. The pieces:
 
 - `jobs-sidecar.ps1` — the server: an `HttpListener` that serves `jobs.html` and the API
   (`/jobs` CRUD, `/ado/assigned`, `/git/branch(es)`/`/git/log` for the commit graph,
-  `/config` + `/config/repos` to register one, `/open`, `/poll/{script}`, `/briefs/{path}`). A background PR-status sweep runs
+  `/config` + `/config/repos` to register one, `/open`, `/poll/{script}`, `/briefs/{path}`, `/shadow/*`). A background PR-status sweep runs
   off the main request loop on `prCheck.intervalSec`.
 - `jobs.html` — the whole UI in one file: a narrow-viewport rail, a wide-viewport kanban
   board, a detail card with a commit graph, search, and the ADO Assigned mode.
@@ -70,6 +70,16 @@ The sidecar binds `localhost` by default. If you want to reach the board from yo
 it works cleanly behind [Tailscale](https://tailscale.com)'s `tailscale serve` — bind the
 wildcard prefix once (`netsh http add urlacl url=http://+:7799/`, elevated) and point
 `tailscale serve` at the port. That's optional; nothing in the app requires it.
+
+## Optional: shadow pane
+
+A view-only page at `/shadow` onto a personal experiment: headless runs that plan a working day
+before it starts and score the plan the next morning. Off by default (`shadow.enabled` in
+`jobs.config.json`); turn it on in the gitignored local config and point `dir` at the folder the
+runs write to. The sidecar parses that folder's day markdown, stage-lined logs and `ledger.json`
+into `/shadow/state`, serves single files at `/shadow/file/<name>`, and the board grows a flush
+bar on its right edge whose dots mirror the loop (plan, compare, answer, tweaks, retro). Nothing
+on the page writes anywhere.
 
 ## Optional: morning briefs
 

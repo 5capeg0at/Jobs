@@ -17,6 +17,10 @@
   "_almanacComment": "Opt-in button linking to a personal daily read served at /almanac/latest.html. Off here deliberately: this repo is meant to be shareable and the Almanac is a private thing, so a clone gets a board with no trace of it. Turn it on per-machine in the gitignored jobs.config.local.json.",
   "almanac": { "enabled": false },
 
+  "_shadowComment": "Opt-in view-only pane onto the shadow-day loop (a personal experiment: headless runs that plan and score a working day). dir is the folder the runs write to (day markdown, logs, ledger.json). Off here for the same reason as the Almanac; turn on per-machine in jobs.config.local.json.",
+  "shadow": { "enabled": false, "dir": "" },
+
   "_reposComment": "Repos a job can be pinned to. Jobs store the repo KEY; the sidecar resolves path + trunk here for the git-graph endpoints (also read by audit-done-jobs.ps1). trunk = the branch to diff a feature branch against (merge-base..branch). Empty by default: register yours from the repo dropdown's '+ Add repo' (it writes to the gitignored jobs.config.local.json), or hand-edit that file using jobs.config.local.example.json as the shape.",
   "repos": {}
 }
+

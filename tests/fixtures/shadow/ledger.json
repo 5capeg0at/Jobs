@@ -1,0 +1,3 @@
+{ "runs": [ { "date": "2026-01-05", "mode": "morning", "slackPermalink": "https://x/p12" } ],
+  "tasks": [ { "date": "2026-01-05", "task": "pre-standup-digest", "plan": "do", "actual": "done", "verdict": "matched", "note": "-" } ],
+  "questions": [] }

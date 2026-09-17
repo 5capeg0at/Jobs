@@ -636,6 +636,152 @@ function Handle-GetAlmanac {
     Handle-GetStatic $Ctx $RequestedPath $AlmanacDir @('*-almanac.html') 'almanac'
 }
 
+# --- Shadow day pane ---------------------------------------------------------
+# View-only window onto the shadow-day loop (jobs #183 / #184). Everything is parsed from the
+# files the runs wrote (day markdown, stage-lined logs, ledger.json) plus the two scheduled
+# tasks; nothing here writes. Gated by shadow.enabled in config because the folder is personal
+# and this repo is public.
+function Get-ShadowConfig {
+    $c = (Get-JobsConfig).shadow
+    if ($c -and $c.enabled -and $c.dir -and (Test-Path -LiteralPath $c.dir -PathType Container)) { $c } else { $null }
+}
+
+function Get-MdSection {
+    param([string]$Text, [string]$Heading)
+    $m = [regex]::Match($Text, '(?ms)^## ' + [regex]::Escape($Heading) + '\s*$(.*?)(?=^## |\z)')
+    if ($m.Success) { $m.Groups[1].Value } else { '' }
+}
+
+function Read-ShadowLog {
+    param([string]$Path, [string]$Mode)
+    $defs = if ($Mode -eq 'morning') {
+        @(@{k='gather'; m='gathering inputs'}, @{k='board'; m='board snapshot'}, @{k='claude'; m='running claude'},
+          @{k='out'; m='\[OK\] .*\.md \('}, @{k='dm'; m='DM sent'}, @{k='ledger'; m='ledger appended'})
+    } else {
+        @(@{k='gather'; m='gathering inputs'}, @{k='board'; m='board snapshot'}, @{k='flatten'; m='flattening transcripts'},
+          @{k='claude'; m='running claude'}, @{k='out'; m='\[OK\] .*\.md \('}, @{k='dm'; m='DM sent'}, @{k='ledger'; m='ledger appended'})
+    }
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    $lines = @(Get-Content -LiteralPath $Path | Where-Object { $_ -match '^\[\d\d:\d\d:\d\d\] ' })
+    if (-not $lines.Count) { return $null }
+    $failed = [bool]($lines | Where-Object { $_ -match '\[FAIL\]' })
+    $skipped = [bool]($lines | Where-Object { $_ -match 'weekend or leave day|already has a Compare section' })
+    $stages = @(); $lastDone = -1
+    for ($i = 0; $i -lt $defs.Count; $i++) {
+        $hit = $lines | Where-Object { $_ -match $defs[$i].m } | Select-Object -First 1
+        $stages += [ordered]@{ key = $defs[$i].k; state = $(if ($hit) { 'done' } else { 'pending' }); at = $(if ($hit) { $hit.Substring(1, 8) } else { $null }) }
+        if ($hit) { $lastDone = $i }
+    }
+    if ($failed -and $lastDone + 1 -lt $stages.Count) { $stages[$lastDone + 1].state = 'failed' }
+    [ordered]@{
+        mode = $Mode; startedAt = $lines[0].Substring(1, 8); finishedAt = $lines[-1].Substring(1, 8)
+        ok = (-not $failed) -and (($stages | Where-Object key -eq 'out').state -eq 'done')
+        failed = $failed; skipped = $skipped; stages = $stages; lines = $lines.Count
+    }
+}
+
+function Read-ShadowDay {
+    param([string]$ShadowDir, [string]$Date, $Ledger)
+    $text = Get-Content -LiteralPath (Join-Path $ShadowDir "$Date.md") -Raw
+    $plan = @()
+    foreach ($m in [regex]::Matches((Get-MdSection $text 'Plan'), '(?m)^\s*-\s+\*\*(.+?)\*\*\s*(?:--|-|:)?\s*(.*)$')) {
+        $why = $m.Groups[2].Value.Trim()
+        $disp = if ($why -match "(?i)doesn'?t fire|nothing to shadow|does not fire") { 'off' }
+                elseif ($why -match '(?i)shadow-safe') { 'do' }
+                else { 'note' }
+        $plan += [ordered]@{ task = $m.Groups[1].Value.Trim(); why = $why; disposition = $disp }
+    }
+    # Days before the bullet contract laid the plan out as a table (time | task | why | safe?).
+    if (-not $plan.Count) {
+        foreach ($line in ((Get-MdSection $text 'Plan') -split "`n")) {
+            if ($line -notmatch '^\s*\|') { continue }
+            $cells = @(($line.Trim().Trim('|') -split '\|') | ForEach-Object { $_.Trim() })
+            if ($cells.Count -lt 4 -or $cells[0] -match '^-+$' -or $cells[1] -in 'Task', 'task') { continue }
+            $safe = $cells[-1]
+            $disp = if ($safe -match "(?i)doesn'?t fire|nothing to shadow|does not fire|^no\b") { 'off' } elseif ($safe -match '(?i)^do\b|shadow-safe|^yes') { 'do' } else { 'note' }
+            $plan += [ordered]@{ task = ($cells[1] -replace '`', ''); why = "$($cells[0]) - $($cells[2])"; disposition = $disp }
+        }
+    }
+    $rowsFor = @(); if ($Ledger) { $rowsFor = @($Ledger.tasks | Where-Object date -eq $Date) }
+    $sc = Get-MdSection $text 'Scorecard'
+    $score = [ordered]@{}
+    foreach ($k in 'matched', 'missed', 'extra', 'deferred') {
+        $n = [regex]::Match($sc, "(?i)\b$k\W{0,3}(\d+)").Groups[1].Value
+        if (-not $n -and $rowsFor.Count) { $n = @($rowsFor | Where-Object verdict -eq $k).Count }
+        $score[$k] = $(if ($n) { [int]$n } else { 0 })
+    }
+    $nss = [regex]::Match($sc, '(?i)not-shadow-safe\W{0,3}(\d+)').Groups[1].Value
+    if (-not $nss -and $rowsFor.Count) { $nss = @($rowsFor | Where-Object verdict -eq 'not-shadow-safe').Count }
+    $score['notShadowSafe'] = $(if ($nss) { [int]$nss } else { 0 })
+    $bullets = { param($s) @([regex]::Matches($s, '(?m)^\s*-\s+(.+)$') | ForEach-Object { $_.Groups[1].Value.Trim() }) }
+    $questions = @([regex]::Matches((Get-MdSection $text 'Questions for Gerhard'), '(?m)^\s*(\d+)[.)]\s+(.+)$') | ForEach-Object { [ordered]@{ n = [int]$_.Groups[1].Value; text = $_.Groups[2].Value.Trim() } })
+    $scLines = @($sc -split "`n" | Where-Object { $_ -match '\S' })
+    [ordered]@{
+        date = $Date
+        leave = [bool]($text -match 'Weekend or leave day')
+        noPlan = [bool]($text -match 'no morning plan was produced')
+        sections = @([regex]::Matches($text, '(?m)^## (.+)$') | ForEach-Object { $_.Groups[1].Value.Trim() })
+        hasCompare = [bool]($text -match '(?m)^## Compare')
+        fromGerhard = @(& $bullets (Get-MdSection $text 'From Gerhard'))
+        plan = $plan
+        needs = @(& $bullets (Get-MdSection $text 'Needs Gerhard'))
+        score = $score
+        scorecard = $(if ($scLines.Count) { ($scLines -join ' ').Trim() } else { '' })
+        tweaks = @(& $bullets (Get-MdSection $text 'Tweaks'))
+        questions = $questions
+        compare = @($rowsFor | ForEach-Object { [ordered]@{ task = $_.task; plan = $_.plan; actual = $_.actual; verdict = $_.verdict; note = $_.note } })
+        runs = [ordered]@{
+            morning = Read-ShadowLog (Join-Path $ShadowDir "$Date-morning.log") 'morning'
+            evening = Read-ShadowLog (Join-Path $ShadowDir "$Date-evening.log") 'evening'
+        }
+        slack = @($(if ($Ledger) { $Ledger.runs | Where-Object { $_.date -eq $Date -and $_.slackPermalink } | ForEach-Object { [ordered]@{ mode = $_.mode; url = $_.slackPermalink } } }))
+        files = @(Get-ChildItem -LiteralPath $ShadowDir -Filter "$Date*" -File | Sort-Object Name | ForEach-Object { $_.Name })
+    }
+}
+
+function Get-ShadowSchedule {
+    $out = @()
+    foreach ($name in 'shadow-day-compare', 'shadow-day-morning') {
+        try {
+            $csv = schtasks /query /tn $name /fo csv /v 2>$null | ConvertFrom-Csv
+            if ($csv) { $out += [ordered]@{ name = $name; next = $csv.'Next Run Time'; last = $csv.'Last Run Time'; result = $csv.'Last Result'; status = $csv.Status } }
+        } catch { }
+    }
+    $out
+}
+
+$script:ShadowCache = $null
+function Get-ShadowState {
+    param($Cfg)
+    if ($script:ShadowCache -and ((Get-Date) - $script:ShadowCache.at).TotalSeconds -lt 30) { return $script:ShadowCache.state }
+    $shadowDir = Join-Path $Cfg.dir 'shadow'
+    $ledger = $null; $lp = Join-Path $Cfg.dir 'ledger.json'
+    if (Test-Path -LiteralPath $lp) { try { $ledger = Get-Content -LiteralPath $lp -Raw | ConvertFrom-Json } catch { } }
+    $days = @()
+    if (Test-Path -LiteralPath $shadowDir) {
+        $dates = Get-ChildItem -LiteralPath $shadowDir -Filter '????-??-??.md' -File | Where-Object { $_.BaseName -match '^\d{4}-\d{2}-\d{2}$' } |
+            Sort-Object BaseName -Descending | Select-Object -First 30
+        foreach ($f in $dates) { try { $days += Read-ShadowDay $shadowDir $f.BaseName $ledger } catch { Write-Warning "shadow day $($f.BaseName): $_" } }
+    }
+    $state = [ordered]@{
+        generatedAt = (Get-Date).ToString('s'); today = (Get-Date).ToString('yyyy-MM-dd')
+        schedule = @(Get-ShadowSchedule)
+        days = $days
+        ledger = [ordered]@{ runs = $(if ($ledger) { @($ledger.runs).Count } else { 0 }); tasks = $(if ($ledger) { @($ledger.tasks).Count } else { 0 }) }
+    }
+    $script:ShadowCache = @{ at = Get-Date; state = $state }
+    $state
+}
+
+function Handle-GetShadowFile {
+    param($Ctx, [string]$Name, $Cfg)
+    $root = Join-Path $Cfg.dir 'shadow'
+    if ($Name -notmatch '^[\w.-]+\.(md|log|json)$') { Send-Err $Ctx 'bad file name' 400; return }
+    $file = Resolve-StaticFile -Root $root -RequestedPath $Name -LatestPattern @()
+    if (-not $file) { Send-Err $Ctx "shadow file not found: $Name" 404; return }
+    Send-File $Ctx $file 'text/plain; charset=utf-8'
+}
+
 # --- ADO assigned rail -------------------------------------------------------
 # Jobs panel "Assigned (ADO)" mode shows my current-sprint Azure DevOps work: Stories
 # (Product Backlog Items) with the Tasks assigned to me nested under them. We shell out to
@@ -1007,6 +1153,14 @@ try {
                 '^/open$'                 { if ($method -eq 'POST') { Handle-OpenDoc $ctx }; break }
                 '^/briefs/?(.*)$'         { if ($method -eq 'GET') { Handle-GetBrief $ctx $Matches[1] $BriefsDir }; break }
                 '^/almanac/?(.*)$'        { if ($method -eq 'GET') { Handle-GetAlmanac $ctx $Matches[1] $AlmanacDir }; break }
+                '^/shadow(?:/(state|file/([^/]+)))?$' {
+                    $scfg = Get-ShadowConfig
+                    if (-not $scfg) { Send-Err $ctx 'shadow pane not enabled (shadow.enabled in jobs.config.local.json)' 404; break }
+                    if (-not $Matches[1]) { Send-File $ctx (Join-Path $ScriptRoot 'shadow.html') 'text/html; charset=utf-8' }
+                    elseif ($Matches[1] -eq 'state') { Send-Json $ctx (Get-ShadowState $scfg) }
+                    else { Handle-GetShadowFile $ctx $Matches[2] $scfg }
+                    break
+                }
                 '^/poll/([^/]+)$'        { $ctx | Out-Null; $latest = Read-LatestJson $Matches[1]; if ($latest) { Send-Json $ctx $latest } else { Send-Json $ctx @{done=$false; status=$null; phase='not-started'; script=$Matches[1]} }; break }
                 default                   { Send-Err $ctx "not found: $path" 404 }
             }
@@ -1021,3 +1175,7 @@ try {
 }
 
 }  # end: run-as-script guard
+
+
+
+

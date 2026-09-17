@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shadow</title>
+<link rel="icon" href="/jobs-mark.ico">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg: oklch(0.172 0.007 72); --surface: oklch(0.214 0.008 72); --raised: oklch(0.258 0.009 72);
+  --border: oklch(0.31 0.008 72); --border-soft: oklch(0.272 0.007 72);
+  --text: oklch(0.945 0.006 72); --muted: oklch(0.68 0.012 72); --faint: oklch(0.55 0.01 72);
+  --accent: oklch(0.75 0.072 196); --accent-bg: oklch(0.30 0.04 196);
+  --ok: oklch(0.77 0.09 156); --warn: oklch(0.81 0.08 78); --fail: oklch(0.70 0.115 30); --you: oklch(0.80 0.10 70);
+  --mono: 'Cascadia Code','SF Mono', ui-monospace, 'Consolas', monospace;
+}
+body.light {
+  --bg: oklch(0.959 0.010 87.5); --surface: oklch(1 0 90); --raised: oklch(0.946 0.012 91.5);
+  --border: oklch(0.862 0.010 252.8); --border-soft: oklch(0.906 0.010 93.6);
+  --text: oklch(0.262 0.055 266.5); --muted: oklch(0.470 0.028 264.3); --faint: oklch(0.652 0.015 262.4);
+  --accent: oklch(0.599 0.103 214.7); --accent-bg: oklch(0.933 0.026 211.6);
+  --ok: oklch(0.583 0.099 169.8); --warn: oklch(0.676 0.133 76.2); --fail: oklch(0.588 0.171 32.5); --you: oklch(0.60 0.14 70);
+}
+html { -webkit-text-size-adjust:100%; }
+body { background:var(--bg); color:var(--text); font:13px ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  padding:12px 16px calc(24px + env(safe-area-inset-bottom)); line-height:1.45; }
+main { max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
+a { color:var(--accent); }
+.mono { font-family:var(--mono); }
+h1 { font-size:18px; font-weight:750; letter-spacing:-0.01em; }
+h2 { font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+.top { display:flex; align-items:baseline; gap:10px; padding:4px 2px; }
+.top .age { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--faint); }
+.card { background:var(--surface); border:1px solid var(--border-soft); border-radius:15px; padding:13px 15px; display:flex; flex-direction:column; gap:10px; }
+.card.today { border-color:color-mix(in oklch,var(--accent) 45%,var(--border-soft)); }
+.empty { color:var(--faint); font-size:12px; }
+
+/* loop ribbon: the five nodes of the learning loop, today's state on each */
+.ribbon { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+.node { background:var(--raised); border:1px solid var(--border-soft); border-radius:11px; padding:8px 6px; text-align:center; display:flex; flex-direction:column; gap:4px; align-items:center; }
+.node .dot { width:10px; height:10px; border-radius:50%; background:var(--faint); opacity:.45; }
+.node.done .dot { background:var(--ok); opacity:1; } .node.failed .dot { background:var(--fail); opacity:1; }
+.node.due .dot { background:var(--warn); opacity:1; } .node.skipped .dot { background:var(--faint); opacity:.8; }
+.node .nl { font-size:10.5px; font-weight:600; }
+.node .ns { font-family:var(--mono); font-size:9.5px; color:var(--faint); line-height:1.2; }
+
+/* schedule */
+.sched { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.sched .s { background:var(--raised); border-radius:11px; padding:8px 10px; font-size:11.5px; }
+.sched .s b { display:block; font-family:var(--mono); font-size:10px; color:var(--faint); font-weight:500; margin-bottom:2px; }
+.sched .s .r { color:var(--muted); font-size:10.5px; }
+
+/* task list (today's plan) */
+.tasks { display:flex; flex-direction:column; gap:6px; }
+.task { display:grid; grid-template-columns:auto 1fr; gap:9px; align-items:start; padding:7px 9px; background:var(--raised); border-radius:10px; }
+.badge { font-family:var(--mono); font-size:9.5px; font-weight:600; padding:2px 7px; border-radius:20px; margin-top:2px; white-space:nowrap; border:1px solid transparent; }
+.b-do { background:color-mix(in oklch,var(--ok) 18%,var(--surface)); color:var(--ok); }
+.b-note { background:color-mix(in oklch,var(--you) 18%,var(--surface)); color:var(--you); }
+.b-off { color:var(--faint); border-color:var(--border-soft); }
+.b-matched { background:color-mix(in oklch,var(--ok) 18%,var(--surface)); color:var(--ok); }
+.b-missed, .b-extra { background:color-mix(in oklch,var(--fail) 18%,var(--surface)); color:var(--fail); }
+.b-deferred, .b-not-shadow-safe { background:color-mix(in oklch,var(--you) 18%,var(--surface)); color:var(--you); }
+.task .tt { font-size:12.5px; font-weight:600; }
+.task .tw { font-size:11.5px; color:var(--muted); margin-top:1px; }
+ul.plain { list-style:none; display:flex; flex-direction:column; gap:5px; }
+ul.plain li { font-size:12px; color:var(--muted); padding-left:12px; position:relative; }
+ul.plain li::before { content:''; position:absolute; left:0; top:8px; width:5px; height:5px; border-radius:50%; background:var(--border); }
+ol.plain { padding-left:18px; display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--muted); }
+
+/* day cards */
+.dhead { display:flex; align-items:center; gap:10px; cursor:pointer; }
+.dhead .dd { font-size:14px; font-weight:700; }
+.dhead .dw { font-family:var(--mono); font-size:10.5px; color:var(--faint); }
+.dhead .chev { margin-left:auto; color:var(--faint); transition:.15s; }
+.day.open .dhead .chev { transform:rotate(90deg); }
+.runs { display:flex; flex-direction:column; gap:6px; }
+.run { display:grid; grid-template-columns:64px 1fr auto; gap:8px; align-items:center; padding:6px 9px; background:var(--raised); border-radius:10px; cursor:pointer; }
+.run:hover { outline:1px solid var(--accent); }
+.run .rm { font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+.run .rt { font-family:var(--mono); font-size:10px; color:var(--faint); white-space:nowrap; }
+.stages { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
+.stage { display:flex; align-items:center; gap:3px; }
+.stage .sd { width:8px; height:8px; border-radius:50%; background:var(--faint); opacity:.35; }
+.stage.done .sd { background:var(--ok); opacity:1; } .stage.failed .sd { background:var(--fail); opacity:1; }
+.stage .sn { font-family:var(--mono); font-size:9px; color:var(--faint); }
+.stage.failed .sn { color:var(--fail); }
+.run.none { cursor:default; opacity:.6; }
+.score { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+.tile { background:var(--raised); border-radius:10px; padding:7px 9px; }
+.tile .n { font-family:var(--mono); font-size:20px; font-weight:600; line-height:1; }
+.tile .l { font-size:10px; color:var(--faint); margin-top:2px; }
+.tile.ok .n { color:var(--ok); } .tile.bad .n { color:var(--fail); } .tile.you .n { color:var(--you); }
+.detail { display:none; flex-direction:column; gap:12px; border-top:1px solid var(--border-soft); padding-top:10px; }
+.day.open .detail { display:flex; }
+.cmp { display:flex; flex-direction:column; gap:5px; }
+.cmp .row { display:grid; grid-template-columns:1fr auto; gap:8px; padding:6px 9px; background:var(--raised); border-radius:10px; }
+.cmp .row .ct { font-size:12px; font-weight:600; } .cmp .row .cn { font-size:11px; color:var(--muted); margin-top:2px; }
+.files { display:flex; flex-wrap:wrap; gap:6px; }
+.chip { font-family:var(--mono); font-size:10px; padding:4px 9px; border-radius:20px; border:1px solid var(--border-soft); background:none; color:var(--muted); cursor:pointer; }
+.chip:hover { color:var(--accent); border-color:var(--accent); }
+.chip.slack { color:var(--accent); }
+.quiet { font-size:11.5px; color:var(--faint); }
+
+/* file viewer */
+#viewer { display:none; position:fixed; inset:0; background:var(--bg); z-index:50; flex-direction:column; }
+#viewer.on { display:flex; }
+#viewer .vh { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--border-soft); background:var(--surface); }
+#viewer .vh .vn { font-family:var(--mono); font-size:11.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#viewer .vh button { margin-left:auto; background:var(--raised); border:1px solid var(--border-soft); color:var(--muted); border-radius:9px; padding:6px 12px; cursor:pointer; font-size:12px; }
+#viewer pre { flex:1; overflow:auto; padding:14px 16px calc(24px + env(safe-area-inset-bottom)); font-family:var(--mono); font-size:11.5px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+#viewer pre .hd { color:var(--accent); font-weight:700; }
+#viewer pre .ok { color:var(--ok); } #viewer pre .fail { color:var(--fail); }
+@media (min-width:600px) { body { font-size:13.5px; } .ribbon { gap:8px; } .node { padding:10px 8px; } }
+</style>
+</head>
+<body>
+<script>
+  (function () {
+    var t; try { t = localStorage.getItem('jobs-theme'); } catch (e) {}
+    if (!t) t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    if (t === 'light') document.body.classList.add('light');
+  })();
+</script>
+<main>
+  <div class="top"><h1>Shadow</h1><span class="quiet">view only</span><span class="age" id="age"></span></div>
+  <section class="card"><h2>Loop</h2><div class="ribbon" id="ribbon"></div></section>
+  <section class="card"><h2>Schedule</h2><div class="sched" id="sched"></div></section>
+  <section class="card today" id="today"></section>
+  <section><h2 style="padding:4px 2px 8px">Days</h2><div id="days" style="display:flex;flex-direction:column;gap:10px"></div></section>
+</main>
+<div id="viewer"><div class="vh"><span class="vn" id="vname"></span><button onclick="closeViewer()">Close</button></div><pre id="vbody"></pre></div>
+
+<script>
+const STAGE_NAMES = { gather:'gather', board:'board', flatten:'flatten', claude:'claude', out:'write', dm:'DM', ledger:'ledger' };
+const RUN_LABEL = { morning:'plan', evening:'compare' };
+let state = null;
+
+function h(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function weekday(d) { return new Date(d + 'T12:00:00').toLocaleDateString('en-NZ', { weekday:'short' }); }
+function niceDate(d) { return new Date(d + 'T12:00:00').toLocaleDateString('en-NZ', { day:'numeric', month:'short' }); }
+
+// The five nodes of the loop, judged from what the files say about today and the last compare.
+// Shared in spirit with the bar in jobs.html; both are deliberately simple reads, no inference.
+function loopNodes(st) {
+  const today = st.days.find(d => d.date === st.today);
+  const lastCompared = st.days.find(d => d.hasCompare && d.date !== st.today) || st.days.find(d => d.hasCompare);
+  const plan = { key:'plan', label:'plan' };
+  if (today && today.leave) { plan.state = 'skipped'; plan.sub = 'leave day'; }
+  else if (today && today.runs.morning) { plan.state = today.runs.morning.ok ? 'done' : 'failed'; plan.sub = today.runs.morning.finishedAt; }
+  else { plan.state = 'pending'; const s = (st.schedule || []).find(x => x.name === 'shadow-day-morning'); plan.sub = s ? s.next.replace(/^\S+\s/, '') : 'not scheduled'; }
+  const cmp = { key:'compare', label:'compare' };
+  const cmpRun = lastCompared && lastCompared.runs.evening;
+  if (cmpRun) { cmp.state = cmpRun.ok ? 'done' : 'failed'; cmp.sub = niceDate(lastCompared.date); }
+  else { cmp.state = 'pending'; const s = (st.schedule || []).find(x => x.name === 'shadow-day-compare'); cmp.sub = s ? s.next.replace(/^\S+\s/, '') : 'none yet'; }
+  const q = lastCompared ? lastCompared.questions.length : 0;
+  const answer = { key:'answer', label:'answer', state: q ? 'due' : (lastCompared ? 'done' : 'pending'), sub: q ? `${q} open` : 'nothing asked' };
+  const t = lastCompared ? lastCompared.tweaks.length : 0;
+  const tweaks = { key:'tweaks', label:'tweaks', state: t ? 'due' : 'pending', sub: t ? `${t} proposed` : 'none' };
+  const now = new Date(); const toFri = (5 - now.getDay() + 7) % 7;
+  const edit = { key:'edit', label:'retro', state:'pending', sub: toFri === 0 ? 'today' : `Fri, ${toFri}d` };
+  return [plan, cmp, answer, tweaks, edit];
+}
+
+function renderRibbon(st) {
+  document.getElementById('ribbon').innerHTML = loopNodes(st).map(n =>
+    `<div class="node ${n.state}" title="${h(n.label)}: ${h(n.state)}"><span class="dot"></span><span class="nl">${h(n.label)}</span><span class="ns">${h(n.sub)}</span></div>`).join('');
+}
+
+function renderSchedule(st) {
+  const el = document.getElementById('sched');
+  if (!st.schedule || !st.schedule.length) { el.innerHTML = '<div class="empty">No scheduled tasks found on this box.</div>'; return; }
+  el.innerHTML = st.schedule.map(s => `<div class="s"><b>${h(s.name.replace('shadow-day-', ''))}</b>next ${h(s.next)}<div class="r">last ${h(s.last)} &middot; result ${h(s.result)}</div></div>`).join('');
+}
+
+function badge(d) { return `<span class="badge b-${h(d)}">${h(d === 'do' ? 'shadow does it' : d === 'note' ? 'needs Gerhard' : d === 'off' ? "doesn't fire" : d)}</span>`; }
+
+function renderToday(st) {
+  const el = document.getElementById('today');
+  const d = st.days.find(x => x.date === st.today);
+  if (!d) { el.innerHTML = `<h2>Today</h2><div class="empty">No plan for ${h(niceDate(st.today))} yet. The morning run writes one at 06:15 on a working day.</div>`; return; }
+  if (d.leave) { el.innerHTML = `<h2>Today</h2><div class="empty">${h(niceDate(d.date))} is a weekend or leave day; nothing to shadow.</div>`; return; }
+  const live = d.plan.filter(p => p.disposition !== 'off'), off = d.plan.filter(p => p.disposition === 'off');
+  el.innerHTML = `<h2>Today &middot; what it thinks the day holds</h2>
+    ${d.fromGerhard.length ? `<div><div class="quiet" style="margin-bottom:4px">From your notes</div><ul class="plain">${d.fromGerhard.map(x => `<li>${h(x)}</li>`).join('')}</ul></div>` : ''}
+    <div class="tasks">${live.map(p => `<div class="task">${badge(p.disposition)}<div><div class="tt">${h(p.task)}</div><div class="tw">${h(p.why)}</div></div></div>`).join('') || '<div class="empty">The plan section had no parseable bullets.</div>'}</div>
+    ${off.length ? `<div class="quiet">Not firing today: ${off.map(p => h(p.task)).join(', ')}</div>` : ''}
+    ${d.needs.length ? `<div><div class="quiet" style="margin-bottom:4px">Needs you</div><ul class="plain">${d.needs.map(x => `<li>${h(x)}</li>`).join('')}</ul></div>` : ''}`;
+}
+
+function runRow(day, mode, r) {
+  if (!r) return `<div class="run none"><span class="rm">${RUN_LABEL[mode]}</span><span class="quiet">${day.leave && mode === 'evening' ? 'nothing to compare' : 'not run'}</span><span></span></div>`;
+  const stages = r.stages.map(s => `<span class="stage ${s.state}" title="${h(s.key)} ${h(s.at || '')}"><span class="sd"></span><span class="sn">${h(STAGE_NAMES[s.key] || s.key)}</span></span>`).join('');
+  return `<div class="run" onclick="openFile('${h(day.date)}-${mode}.log')" title="open log"><span class="rm">${RUN_LABEL[mode]}</span><span class="stages">${stages}</span><span class="rt">${h(r.startedAt)}${r.skipped ? ' skipped' : r.failed ? ' FAIL' : ''}</span></div>`;
+}
+
+function renderDays(st) {
+  const el = document.getElementById('days');
+  if (!st.days.length) { el.innerHTML = '<div class="empty">No shadow days yet.</div>'; return; }
+  el.innerHTML = st.days.map(d => {
+    const sc = d.score || {};
+    const score = d.hasCompare ? `<div class="score">
+        <div class="tile ok"><div class="n">${sc.matched|0}</div><div class="l">matched</div></div>
+        <div class="tile bad"><div class="n">${sc.missed|0}</div><div class="l">missed</div></div>
+        <div class="tile bad"><div class="n">${sc.extra|0}</div><div class="l">extra</div></div>
+        <div class="tile you"><div class="n">${sc.notShadowSafe|0}</div><div class="l">yours</div></div></div>` : '';
+    const cmp = d.compare.length ? `<div><div class="quiet" style="margin-bottom:4px">Compare</div><div class="cmp">${d.compare.map(r =>
+        `<div class="row"><div><div class="ct">${h(r.task)}</div><div class="cn">${h(r.actual)}${r.note && r.note !== '-' ? ' &middot; ' + h(r.note) : ''}</div></div>${badge(r.verdict)}</div>`).join('')}</div></div>` : '';
+    const plan = d.plan.length && d.date !== st.today ? `<div><div class="quiet" style="margin-bottom:4px">Plan</div><div class="tasks">${d.plan.filter(p => p.disposition !== 'off').map(p =>
+        `<div class="task">${badge(p.disposition)}<div><div class="tt">${h(p.task)}</div><div class="tw">${h(p.why)}</div></div></div>`).join('')}</div></div>` : '';
+    const tweaks = d.tweaks.length ? `<div><div class="quiet" style="margin-bottom:4px">Tweaks proposed</div><ul class="plain">${d.tweaks.map(x => `<li>${h(x)}</li>`).join('')}</ul></div>` : '';
+    const qs = d.questions.length ? `<div><div class="quiet" style="margin-bottom:4px">Questions for you</div><ol class="plain">${d.questions.map(q => `<li>${h(q.text)}</li>`).join('')}</ol></div>` : '';
+    const files = `<div class="files">${d.files.map(f => `<button class="chip" onclick="openFile('${h(f)}')">${h(f.replace(d.date + '-', '').replace(d.date, 'day'))}</button>`).join('')}
+        ${d.slack.map(s => `<a class="chip slack" href="${h(s.url)}" target="_blank" rel="noopener">Slack ${h(RUN_LABEL[s.mode] || s.mode)}</a>`).join('')}</div>`;
+    return `<div class="card day" id="day-${h(d.date)}">
+      <div class="dhead" onclick="toggleDay('${h(d.date)}')"><span class="dd">${h(niceDate(d.date))}</span><span class="dw">${h(weekday(d.date))}${d.leave ? ' &middot; leave' : ''}${d.noPlan ? ' &middot; no plan' : ''}</span><span class="chev">&#9656;</span></div>
+      <div class="runs">${runRow(d, 'morning', d.runs.morning)}${runRow(d, 'evening', d.runs.evening)}</div>
+      ${score}
+      <div class="detail">${d.scorecard ? `<div class="quiet">${h(d.scorecard)}</div>` : ''}${cmp}${plan}${tweaks}${qs}${files}</div>
+    </div>`;
+  }).join('');
+}
+
+function toggleDay(date) { document.getElementById('day-' + date).classList.toggle('open'); }
+
+async function openFile(name) {
+  const v = document.getElementById('viewer'); v.classList.add('on');
+  document.getElementById('vname').textContent = name;
+  const pre = document.getElementById('vbody'); pre.textContent = 'loading...';
+  try {
+    const t = await (await fetch('/shadow/file/' + encodeURIComponent(name))).text();
+    pre.innerHTML = h(t).replace(/^(#{1,3} .+)$/gm, '<span class="hd">$1</span>').replace(/\[OK\]/g, '<span class="ok">[OK]</span>').replace(/\[FAIL\]/g, '<span class="fail">[FAIL]</span>');
+  } catch (e) { pre.textContent = 'could not load ' + name; }
+  pre.scrollTop = 0;
+}
+function closeViewer() { document.getElementById('viewer').classList.remove('on'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeViewer(); });
+
+async function load() {
+  try { state = await (await fetch('/shadow/state')).json(); }
+  catch (e) { document.getElementById('today').innerHTML = '<div class="empty">Could not reach the sidecar.</div>'; return; }
+  if (state.error) { document.getElementById('today').innerHTML = `<div class="empty">${h(state.error)}</div>`; return; }
+  document.getElementById('age').textContent = 'read ' + new Date(state.generatedAt).toLocaleTimeString('en-NZ', { hour:'2-digit', minute:'2-digit' });
+  renderRibbon(state); renderSchedule(state); renderToday(state); renderDays(state);
+  const first = document.querySelector('.day'); if (first && !document.querySelector('.day.open')) first.classList.add('open');
+}
+load();
+setInterval(load, 5 * 60 * 1000);
+</script>
+</body>
+</html>

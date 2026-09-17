@@ -37,9 +37,12 @@ the plan below. If there were none, say so in one line. Anything he stated as in
 ("today I'm on X") becomes a planned task even if no other source predicts it.
 
 ## Plan
-For each catalogue task that fires today, one line: task id, why it fires (calendar, board, Slack,
-pipeline, cadence), and whether you will do it (shadow-safe) or only note it (needs Gerhard).
-Order by the day rhythm in the catalogue. Include meetings from the calendar as anchors.
+For each catalogue task that fires today, one bullet in exactly this shape, which a script parses:
+`- **<task id>** -- <why it fires: calendar, board, Slack, pipeline, cadence>. <disposition>`
+where <disposition> is the last sentence and is one of `Shadow-safe: do it.`,
+`Needs Gerhard: note only.` or `Doesn't fire.` Use the catalogue task id verbatim as the bold
+text (a meeting anchor is `**<task id>, HH:MM**`). Order by the day rhythm in the catalogue.
+Include meetings from the calendar as anchors.
 
 ## Done (shadow-safe tasks executed)
 Do every shadow-safe task in the plan, read-only, and record its output here under a `### <task id>`
@@ -63,3 +66,4 @@ merge"). Keep under 10 lines.
 
 Write in NZ English, ASCII only ([OK]/[FAIL]/->). Be specific: ids, times, names. When you finish,
 your final message is one line: the path of the file you wrote. Do not call SendMessage.
+
