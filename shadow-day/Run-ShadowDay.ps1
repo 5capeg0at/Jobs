@@ -74,6 +74,11 @@ $since = $since.AddHours(17)
 $tz = [System.TimeZoneInfo]::FindSystemTimeZoneById('New Zealand Standard Time')
 $sinceUtc = [System.TimeZoneInfo]::ConvertTimeToUtc([datetime]::SpecifyKind($since, 'Unspecified'), $tz)
 $sinceTs = [int][double]::Parse(([DateTimeOffset]$sinceUtc).ToUnixTimeSeconds())
+# The M365 tools read an offset-less datetime as UTC, which shifts an NZ day by 12-13 hours, so
+# every datetime handed to the prompt carries the NZ offset in force on that date.
+function WithOffset([datetime]$local) { ([DateTimeOffset]::new($local, $tz.GetUtcOffset($local))).ToString('yyyy-MM-ddTHH:mm:sszzz') }
+$dayStart = WithOffset $Date; $dayEnd = WithOffset $Date.AddDays(1).AddSeconds(-1)
+$utcOffset = $tz.GetUtcOffset($Date).ToString('hh\:mm')
 
 Log "gathering inputs ($Mode) for $d"
 $tmp = Join-Path $env:TEMP "shadow-enrich-$d-$Mode"
@@ -85,6 +90,15 @@ $to = if ($Mode -eq 'morning') { $Date.AddHours(8) } else { $Date.AddDays(1) }
 $sb = [System.Text.StringBuilder]::new()
 [void]$sb.AppendLine("# System record $($from.ToString('yyyy-MM-dd')) .. $d (gathered $(Get-Date -Format 'HH:mm'))")
 foreach ($f in Get-ChildItem $tmp -Filter '*.md' | Sort-Object Name) { [void]$sb.AppendLine((Get-Content $f.FullName -Raw)) }
+if ($Mode -eq 'morning') {
+    # The change record misses sprint work nobody touched since the last working day; the snapshot
+    # of what's assigned to him catches it, read as of $to so a past-date run can't see later moves.
+    $openWork = Join-Path $tmp 'open-work.md'
+    try {
+        & (Join-Path $here 'Get-OpenWork.ps1') -OutFile $openWork -AsOfUtc ([System.TimeZoneInfo]::ConvertTimeToUtc($to, $tz)) *>> $log
+        [void]$sb.AppendLine((Get-Content $openWork -Raw))
+    } catch { Log "open-work snapshot failed: $($_.Exception.Message)" }
+}
 $sb.ToString() | Set-Content $inputs -Encoding utf8
 
 Log 'board snapshot'
@@ -109,7 +123,8 @@ $prompt = $template.
     Replace('{{LEAVE}}', (Join-Path $dir 'leave.md')).Replace('{{INPUTS}}', $inputs).
     Replace('{{BOARD}}', $board).Replace('{{DAYFILE}}', $dayfile).Replace('{{PREV}}', $prevFile).
     Replace('{{SINCE}}', $since.ToString('yyyy-MM-dd HH:mm')).Replace('{{SINCE_DATE}}', $since.ToString('yyyy-MM-dd')).
-    Replace('{{SINCE_ISO}}', $since.ToString('yyyy-MM-ddTHH:mm:ss')).Replace('{{SINCE_TS}}', "$sinceTs")
+    Replace('{{SINCE_ISO}}', (WithOffset $since)).Replace('{{SINCE_TS}}', "$sinceTs").
+    Replace('{{DAY_START}}', $dayStart).Replace('{{DAY_END}}', $dayEnd).Replace('{{UTC_OFFSET}}', $utcOffset)
 $promptFile = Join-Path $shadow "$d-$Mode-prompt.md"
 $prompt | Set-Content $promptFile -Encoding utf8
 if ($PromptOnly) { Log "prompt rendered to $promptFile (PromptOnly)"; return }

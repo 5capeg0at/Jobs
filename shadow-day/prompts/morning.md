@@ -10,13 +10,18 @@ against those and must not be contaminated.
 - The task catalogue and Gerhard's day rhythm: {{CATALOGUE}} (read it first, whole).
 - Leave and non-working days: {{LEAVE}}. If {{DATE}} is a weekend or leave day, write a two-line
   note saying so to {{OUT}} and stop.
-- System record for yesterday and overnight (ADO ticket changes by anyone that touch his items, his
-  commits, pipeline runs with colour stages, PR events): {{INPUTS}}.
+- System record for yesterday and overnight (ADO work item changes he made, his commits, pipeline
+  runs with colour stages, PR events), ending with a snapshot of the ADO work assigned to him that
+  isn't done, with each task's parent PBI: {{INPUTS}}. Open In Progress items in the current sprint
+  are the strongest predictor of what he'll work on today, even when nothing moved on them overnight.
 - Jobs board snapshot (JSON): {{BOARD}}.
 
 ## Gather (MCP, read-only, at most 3 Microsoft Graph calls per turn; wait 65s on a 429)
 
-1. Calendar for {{DATE}} 00:00-23:59 (outlook_calendar_search, query "*", order oldest).
+1. Calendar for {{DATE}} (outlook_calendar_search, query "*", order oldest, afterDateTime
+   `{{DAY_START}}`, beforeDateTime `{{DAY_END}}`, passed exactly as written: without the offset the
+   tool reads them as UTC and returns the wrong day). Events come back in UTC; add {{UTC_OFFSET}} to
+   get NZ time before you use or print them.
 2. Slack since {{SINCE}}: (a) everything Gerhard himself posted (`from:@Gerhard.Wissing after:{{SINCE_DATE}}`),
    paying most attention to his notes-to-self DM: that is his context inbox, where he dictates
    decisions, hallway outcomes, "today I'm on X" intent, and answers to the questions the previous

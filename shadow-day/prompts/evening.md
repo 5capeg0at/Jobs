@@ -12,7 +12,9 @@ The only file you write is {{OUT}} (append to it; do not rewrite the morning sec
 - What the systems recorded today (his ADO changes and comments, commits, PRs, pipeline runs): {{INPUTS}}.
 - Gather via MCP (read-only, max 3 Graph calls per turn): his Slack posts today
   (`from:@Gerhard.Wissing on:{{DATE}}`), today's calendar as it ended up, and sent mail today
-  (folderName "Sent Items", subjects only).
+  (folderName "Sent Items", subjects only). For the calendar and mail, pass afterDateTime
+  `{{DAY_START}}` and beforeDateTime `{{DAY_END}}` exactly as written: without the offset the tools
+  read them as UTC and return the wrong day. Results come back in UTC; add {{UTC_OFFSET}} for NZ time.
 
 ## Append to {{OUT}}
 
