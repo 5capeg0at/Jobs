@@ -7,12 +7,14 @@ against those and must not be contaminated.
 
 ## What you know
 
+- Gerhard's standing notes: {{STANDING}}. Read it first; its rules override the catalogue and
+  anything you would otherwise infer, and its answers settle the questions they speak to.
 - The task catalogue and Gerhard's day rhythm: {{CATALOGUE}} (read it first, whole).
 - Leave and non-working days: {{LEAVE}}. If {{DATE}} is a weekend or leave day, write a two-line
   note saying so to {{OUT}} and stop.
 - System record for yesterday and overnight (ADO work item changes he made, his commits, pipeline
-  runs with colour stages, PR events), ending with a snapshot of the ADO work assigned to him that
-  isn't done, with each task's parent PBI: {{INPUTS}}. Open In Progress items in the current sprint
+  runs with colour stages, PR events), a snapshot of the ADO work assigned to him that isn't done,
+  with each task's parent PBI, and the team away list from the Green Mile: {{INPUTS}}. Open In Progress items in the current sprint
   are the strongest predictor of what he'll work on today, even when nothing moved on them overnight.
 - Jobs board snapshot (JSON): {{BOARD}}.
 
@@ -22,23 +24,35 @@ against those and must not be contaminated.
    `{{DAY_START}}`, beforeDateTime `{{DAY_END}}`, passed exactly as written: without the offset the
    tool reads them as UTC and returns the wrong day). Events come back in UTC; add {{UTC_OFFSET}} to
    get NZ time before you use or print them.
-2. Slack since {{SINCE}}: (a) everything Gerhard himself posted (`from:@Gerhard.Wissing after:{{SINCE_DATE}}`),
+2. Answers to the compares' questions. Read each of these Slack threads with slack_read_thread:
+{{ANSWER_THREADS}}
+   The tool returns the newest page first: follow every cursor until it says there are no more
+   messages. Each question is its own reply containing `*Qn.*`. Its reaction is Gerhard's answer
+   (the DM is his, so any reaction is his; ignore a `::skin-tone-N` suffix): `+1`/`thumbsup` = yes,
+   `-1`/`thumbsdown` = no, `point_down` = he replied in text elsewhere in the thread (find it). A
+   question with no reaction is unanswered. The same questions also appear in the parent message;
+   reactions there don't count.
+3. Slack since {{SINCE}}: (a) everything Gerhard himself posted (`from:@Gerhard.Wissing after:{{SINCE_DATE}}`),
    paying most attention to his notes-to-self DM: that is his context inbox, where he dictates
-   decisions, hallway outcomes, "today I'm on X" intent, and answers to the questions the previous
-   compare asked him (those questions are in the `## Questions for Gerhard` section of {{PREV}}; read
-   it and match answers to questions); (b) messages mentioning or DM'd to him (`to:@Gerhard.Wissing
+   decisions, hallway outcomes and "today I'm on X" intent; (b) messages mentioning or DM'd to him (`to:@Gerhard.Wissing
    after:{{SINCE_DATE}}` and `@Gerhard.Wissing after:{{SINCE_DATE}}`); (c) #kupe-development and
    #product-team since then (slack_read_channel with oldest = {{SINCE_TS}}).
-3. Inbox since {{SINCE}} (outlook_email_search, folderName Inbox, afterDateTime {{SINCE_ISO}}): subjects,
+4. Inbox since {{SINCE}} (outlook_email_search, folderName Inbox, afterDateTime {{SINCE_ISO}}): subjects,
    senders as roles, no bodies unless a subject clearly needs a reply from him today.
 
 ## Write {{OUT}} with exactly these sections
 
 # Shadow day {{DATE}}
 
+## Headline
+The Slack message he reads on his phone before standup; everything else goes in its thread. At
+most 4 short lines, addressed to him as "you", no tables: what the day looks like in one line,
+then the one or two things that need him first (a red pipeline, a vote, a meeting clash). Say
+"quiet" plainly when it is.
+
 ## From Gerhard
-What his notes-to-self and answers since {{SINCE}} told you, one line each, and how each changed
-the plan below. If there were none, say so in one line. Anything he stated as intent for today
+What his answers and notes-to-self since {{SINCE}} told you, one line each (answers as
+"<compare date> Qn: yes/no/<his reply>"), and how each changed the plan below. If there were none, say so in one line. Anything he stated as intent for today
 ("today I'm on X") becomes a planned task even if no other source predicts it.
 
 ## Plan
@@ -47,7 +61,8 @@ For each catalogue task that fires today, one bullet in exactly this shape, whic
 where <disposition> is the last sentence and is one of `Shadow-safe: do it.`,
 `Needs Gerhard: note only.` or `Doesn't fire.` Use the catalogue task id verbatim as the bold
 text (a meeting anchor is `**<task id>, HH:MM**`). Order by the day rhythm in the catalogue.
-Include meetings from the calendar as anchors.
+Include meetings from the calendar as anchors, except one whose other attendee or organiser the
+away list puts on leave today: list that as `Doesn't fire.` and say who is away.
 
 ## Done (shadow-safe tasks executed)
 Do every shadow-safe task in the plan, read-only, and record its output here under a `### <task id>`

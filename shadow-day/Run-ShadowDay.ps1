@@ -99,7 +99,24 @@ if ($Mode -eq 'morning') {
         [void]$sb.AppendLine((Get-Content $openWork -Raw))
     } catch { Log "open-work snapshot failed: $($_.Exception.Message)" }
 }
+# Meeting requests aren't cancelled when someone's away, so both runs need the team away list to
+# tell a calendared meeting that happened from one that didn't.
+$away = Join-Path $tmp 'team-away.md'
+try {
+    & (Join-Path $here 'Get-TeamAway.ps1') -OutFile $away -AsOfUtc ([System.TimeZoneInfo]::ConvertTimeToUtc($to, $tz)) *>> $log
+    [void]$sb.AppendLine((Get-Content $away -Raw))
+} catch { Log "team away list failed: $($_.Exception.Message)" }
 $sb.ToString() | Set-Content $inputs -Encoding utf8
+
+# Answers come back as reactions and replies on the questions in each compare's Slack thread. He
+# may answer a day or two late, so the morning run reads the last few compare threads, not just one.
+$answerThreads = '(none)'
+$ledgerPath = Join-Path $dir 'ledger.json'
+if (Test-Path $ledgerPath) {
+    $recent = @((Get-Content $ledgerPath -Raw | ConvertFrom-Json).runs | Where-Object { $_.mode -eq 'evening' -and $_.slackTs -and $_.date -lt $d } |
+        Sort-Object date -Descending | Select-Object -First 3)
+    if ($recent) { $answerThreads = ($recent | ForEach-Object { "- compare for $($_.date): channel_id ``$($_.slackChannel)``, message_ts ``$($_.slackTs)``" }) -join "`n" }
+}
 
 Log 'board snapshot'
 try {
@@ -124,7 +141,8 @@ $prompt = $template.
     Replace('{{BOARD}}', $board).Replace('{{DAYFILE}}', $dayfile).Replace('{{PREV}}', $prevFile).
     Replace('{{SINCE}}', $since.ToString('yyyy-MM-dd HH:mm')).Replace('{{SINCE_DATE}}', $since.ToString('yyyy-MM-dd')).
     Replace('{{SINCE_ISO}}', (WithOffset $since)).Replace('{{SINCE_TS}}', "$sinceTs").
-    Replace('{{DAY_START}}', $dayStart).Replace('{{DAY_END}}', $dayEnd).Replace('{{UTC_OFFSET}}', $utcOffset)
+    Replace('{{DAY_START}}', $dayStart).Replace('{{DAY_END}}', $dayEnd).Replace('{{UTC_OFFSET}}', $utcOffset).
+    Replace('{{STANDING}}', (Join-Path $dir 'standing-notes.md')).Replace('{{ANSWER_THREADS}}', $answerThreads)
 $promptFile = Join-Path $shadow "$d-$Mode-prompt.md"
 $prompt | Set-Content $promptFile -Encoding utf8
 if ($PromptOnly) { Log "prompt rendered to $promptFile (PromptOnly)"; return }
@@ -175,8 +193,8 @@ Log "[OK] $out ($($text.Length) chars)"
 
 $slack = @{}
 if (-not $NoSlack) {
-    $dm = if ($Mode -eq 'evening') { $t = Join-Path $env:TEMP "shadow-dm-$d.md"; $text.Substring($before) | Set-Content $t -Encoding utf8; $t } else { $out }
-    $posted = & "$HOME\.claude\scripts\send-slack-digest.ps1" -Path $dm 2>&1 | Tee-Object -FilePath $log -Append
+    $dm = if ($Mode -eq 'evening') { $t = Join-Path $env:TEMP "shadow-dm-$d.md"; "# Shadow day $d compare`n`n$($text.Substring($before))" | Set-Content $t -Encoding utf8; $t } else { $out }
+    $posted = & (Join-Path $here 'Send-ShadowPost.ps1') -Path $dm 2>&1 | Tee-Object -FilePath $log -Append
     if ("$posted" -match 'ts=(\S+) channel=(\S+) permalink=(\S+)') { $slack = @{ SlackTs = $Matches[1]; SlackChannel = $Matches[2]; SlackPermalink = $Matches[3] } }
     Log 'DM sent'
 }
